@@ -23,6 +23,9 @@ const COLUMN_ALIASES = {
   protein: ['protein', 'prot'],
   carbs: ['carbs', 'carb', 'carbohydrates', 'carbohydrate'],
   fat: ['fat', 'fats'],
+  // My-foods file columns (see foodfile.js).
+  per: ['per', 'serving', 'per serving', 'basis'],
+  portions: ['portions', 'measures'],
 };
 
 const COLUMN_TITLES = {

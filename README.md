@@ -26,6 +26,7 @@ Log what you eat into a [Table Calc](https://github.com/BenRuns/table-calc-plugi
 | **Adjust food at cursor** | Change the quantity or unit of the row your cursor is on; calories and macros recalculate. **Different food…** swaps the food. |
 | **Remove food at cursor** | Deletes the row and fixes up the totals. |
 | **Insert empty food log** | Drops in an empty log table. |
+| **Open My foods** | Opens your food database note, creating it if needed. |
 
 When adding or removing rows, Cal Track rewrites the table's formulas the way a spreadsheet would. `=SUM(D1:D3)` becomes `=SUM(D1:D4)`, and `Remaining` keeps pointing at `Total` and `Goal`. If you add or delete rows by hand, re-check the formulas: Table Calc references are positional.
 
@@ -41,9 +42,30 @@ When adding or removing rows, Cal Track rewrites the table's formulas the way a 
 |--------|----------|-----|
 | [USDA FoodData Central](https://fdc.nal.usda.gov/) | Generic foods (banana, chicken breast) and US brands | Optional. The shared `DEMO_KEY` allows about 30 lookups an hour; a [free personal key](https://fdc.nal.usda.gov/api-key-signup) gives 1,000. |
 | [Open Food Facts](https://world.openfoodfacts.org/) | Packaged foods worldwide | None |
-| **Custom** | Anything with a nutrition label | — |
+| **My foods** | Your own foods and portions, kept in a note in your vault | — |
 
-Every food you log is saved locally. It shows up instantly (and offline) under **Saved & recent** next time, and lets **Adjust** recalculate without a network call.
+Search shows **My foods** first, then recently used foods, then the online results.
+
+### My foods
+
+Your own food database is a normal note, `Cal Track/Foods.md` by default (you can change the path in settings). You can read it, edit it by hand, and it syncs with the rest of your vault:
+
+```markdown
+| Food | Per | kcal | Protein | Carbs | Fat | Portions |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Protein bar | 1 bar = 60 g | 240 | 20 | 25 | 8 | |
+| Salmon, cooked | 100 g | 206 | 22.1 | 0 | 12.4 | fillet = 154 g; my plate = 6 oz |
+| Mom's lasagna | 1 slice | 450 | | | | big slice = 1.5 slice |
+```
+
+- **Per** says what the numbers are for: `100 g`, `40 g`, `1 bar = 60 g`, or `1 slice`. With no weight, only slices (and portions defined in slices) can be logged.
+- **Portions** are extra units, separated by `;`, each written `name = quantity unit`. A portion can use any unit the food already has.
+
+Ways foods get there:
+- **+ Custom** in the search box: type in a nutrition label.
+- **Save as portion…** in the quantity picker: name the current amount ("my bowl") and it becomes a unit for that food. This works on online foods too, and saves them to My foods.
+- **Save to My foods** in the quantity picker: keeps an online food, so it's found instantly and works offline.
+- **Open My foods** command: edit the note directly. Changes apply on the next search.
 
 ### Your own tables
 
@@ -56,7 +78,8 @@ Columns are found by their header names, so you can reorder them, drop the macro
 - **USDA / Open Food Facts**: turn each source on or off; USDA API key
 - **Macro columns**: include Protein / Carbs / Fat in new logs
 - **Daily calorie goal**: adds Goal and Remaining rows to new logs
-- **Clear saved foods**
+- **My foods note**: where your food database lives
+- **Clear recent foods**: forgets cached lookups (My foods is untouched)
 
 ---
 

@@ -94,3 +94,41 @@
   font-size: 1.1em;
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── Save portion / save to My foods ─────────────────────────── */
+
+.cal-track-save {
+  margin-bottom: 12px;
+}
+
+.cal-track-save-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cal-track-link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  height: auto;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.cal-track-link:hover {
+  text-decoration: underline;
+}
+
+.cal-track-save-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cal-track-save-form input {
+  flex: 1;
+  min-width: 0;
+}

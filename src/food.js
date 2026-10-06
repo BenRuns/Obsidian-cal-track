@@ -250,6 +250,9 @@ function makeCustomFood({
     per100g,
     portions,
   };
+  // What the label's numbers were for, so the food can be written back out
+  // the way it was entered (see foodfile.js).
+  food.per = { amount, unit, grams: noMass ? null : grams };
   if (noMass) food.noMass = true;
   else if (isVolumeUnit(unit)) food.density = grams / (amount * VOLUME_UNITS[unit]);
   return food;
