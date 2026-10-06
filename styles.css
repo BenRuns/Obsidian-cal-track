@@ -1,0 +1,96 @@
+/* ─── Food search ─────────────────────────────────────────────── */
+
+.cal-track-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-track-search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-track-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  min-height: 1.4em;
+  margin: 6px 0;
+}
+
+.cal-track-results {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.cal-track-section {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 10px 0 4px;
+}
+
+.cal-track-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.cal-track-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cal-track-item-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cal-track-item-brand {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.cal-track-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-track-badge {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 0 4px;
+  font-size: 0.85em;
+}
+
+/* ─── Portion picker ──────────────────────────────────────────── */
+
+.cal-track-portion-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-track-portion-row input {
+  width: 6em;
+}
+
+.cal-track-portion-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-track-preview {
+  margin: 12px 0;
+  font-size: 1.1em;
+  font-variant-numeric: tabular-nums;
+}
