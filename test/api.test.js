@@ -52,3 +52,89 @@ test('searchAll skips disabled sources', async () => {
   await searchAll(request, 'egg', { useUsda: true, useOff: false });
   assert.equal(calls.length, 1);
 });
+
+const { asBarcode, sameBarcode } = require('../src/api');
+
+const offProduct = {
+  status: 1,
+  product: {
+    product_name: 'Cheerios',
+    brands: 'General Mills',
+    serving_quantity: 28,
+    nutriments: { 'energy-kcal_100g': 357, proteins_100g: 12.5 },
+  },
+};
+
+test('asBarcode accepts 8–14 digits with spaces or dashes', () => {
+  assert.equal(asBarcode('016000275287'), '016000275287');
+  assert.equal(asBarcode('0 16000 27528 7'), '016000275287');
+  assert.equal(asBarcode('5449-0000-0099-6'), '5449000000996');
+  assert.equal(asBarcode('1234567'), null);
+  assert.equal(asBarcode('banana'), null);
+  assert.equal(asBarcode('2 eggs'), null);
+});
+
+test('sameBarcode ignores leading zeros (UPC-A / EAN-13 / GTIN-14)', () => {
+  assert.ok(sameBarcode('016000275287', '0016000275287'));
+  assert.ok(sameBarcode('00016000275287', '16000275287'));
+  assert.ok(!sameBarcode('016000275287', '016000275288'));
+  assert.ok(!sameBarcode('', '0'));
+});
+
+test('barcode query hits the OFF product endpoint and filters USDA by gtinUpc', async () => {
+  const { request, calls } = stub({
+    'https://world.openfoodfacts.org/api/v2/product/016000275287.json': {
+      status: 404,
+      json: { status: 0 },
+    },
+    'https://world.openfoodfacts.org/api/v2/product/0016000275287.json': {
+      status: 200,
+      json: offProduct,
+    },
+    'https://api.nal.usda.gov': {
+      status: 200,
+      json: {
+        foods: [
+          {
+            fdcId: 1,
+            description: 'CHEERIOS',
+            brandOwner: 'General Mills',
+            gtinUpc: '016000275287',
+            foodNutrients: [{ nutrientId: 1008, value: 357 }],
+          },
+          // Text match on the number, but a different barcode → dropped.
+          {
+            fdcId: 2,
+            description: 'OTHER',
+            gtinUpc: '999',
+            foodNutrients: [{ nutrientId: 1008, value: 1 }],
+          },
+        ],
+      },
+    },
+  });
+  const { foods, errors, barcode } = await searchAll(request, '0 16000 27528 7', {
+    useUsda: true,
+    useOff: true,
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(barcode, '016000275287');
+  assert.deepEqual(
+    foods.map((f) => f.id),
+    ['usda:1', 'off:0016000275287'],
+  );
+  assert.equal(foods[1].brand, 'General Mills');
+  const usdaUrl = new URL(calls.find((c) => c.includes('nal.usda.gov')));
+  assert.equal(usdaUrl.searchParams.get('dataType'), 'Branded');
+  assert.ok(!calls.some((c) => c.includes('search.pl')), 'no text search for a barcode');
+});
+
+test('unknown barcode returns no foods and no error', async () => {
+  const { request } = stub({
+    'https://world.openfoodfacts.org/api/v2/product/': { status: 404, json: { status: 0 } },
+    'https://api.nal.usda.gov': { status: 200, json: { foods: [] } },
+  });
+  const { foods, errors } = await searchAll(request, '12345678', { useUsda: true, useOff: true });
+  assert.deepEqual(foods, []);
+  assert.deepEqual(errors, []);
+});

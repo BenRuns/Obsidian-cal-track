@@ -7,6 +7,7 @@
 - Save as portion: name the current amount ("my bowl = 300 g") and pick it as a unit later, on any food
 - Save to My foods: keep an online food for instant, offline use
 - Open My foods command; My foods note path setting
+- Barcode lookup: type a UPC / EAN into the search box to find the product on Open Food Facts and USDA branded foods
 
 ## 0.1.0
 

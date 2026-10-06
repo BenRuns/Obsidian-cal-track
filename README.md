@@ -30,6 +30,10 @@ Log what you eat into a [Table Calc](https://github.com/BenRuns/table-calc-plugi
 
 When adding or removing rows, Cal Track rewrites the table's formulas the way a spreadsheet would. `=SUM(D1:D3)` becomes `=SUM(D1:D4)`, and `Remaining` keeps pointing at `Total` and `Goal`. If you add or delete rows by hand, re-check the formulas: Table Calc references are positional.
 
+### Barcodes
+
+Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and dashes are fine) into the search box. Cal Track looks it up on Open Food Facts and in USDA's branded foods instead of running a text search. A 12- or 13-digit number is looked up as soon as it's complete; press Enter for other lengths. If nothing is found, use **+ Custom** to enter it from the label.
+
 ### Units
 
 - **Portions from the database**: `medium`, `slice`, `serving`, `cup`… using the database's own gram weight.
