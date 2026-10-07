@@ -6,7 +6,8 @@
     "build": "esbuild src/main.js --bundle --external:obsidian --format=cjs --outfile=main.js",
     "dev": "esbuild src/main.js --bundle --external:obsidian --format=cjs --outfile=main.js --watch",
     "lint": "biome check src test",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "demo": "node demo/build.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",

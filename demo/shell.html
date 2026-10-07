@@ -1,0 +1,189 @@
+<title>Cal Track Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column, like an Obsidian note on a phone. A summary strip sits over the note; sheets slide up from the bottom. */
+:root {
+  --bg: #f3f5f2;
+  --surface: #ffffff;
+  --ink: #1b221d;
+  --muted: #5d6b62;
+  --faint: #8a978f;
+  --line: #dbe2dc;
+  --sunk: #eaeee9;
+  --accent: #2f6b4f;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcebe2;
+  --warn: #b0452f;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --surface: #1a211c; --ink: #e4ebe6; --muted: #9fb0a5; --faint: #6f8076;
+    --line: #2c3730; --sunk: #222b25; --accent: #6cbf93; --accent-ink: #0f1a14; --accent-soft: #23392d;
+    --warn: #ec8a73; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --surface: #1a211c; --ink: #e4ebe6; --muted: #9fb0a5; --faint: #6f8076;
+  --line: #2c3730; --sunk: #222b25; --accent: #6cbf93; --accent-ink: #0f1a14; --accent-soft: #23392d;
+  --warn: #ec8a73; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); padding-inline: 16px; padding-block: 20px 48px; }
+body.locked { overflow: hidden; }
+.wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 16px; }
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.muted { color: var(--muted); }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+header h1 { font: 700 1.6rem/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+.head-actions { display: flex; gap: 8px; }
+
+.primary, .ghost, .danger { border-radius: 8px; padding: 9px 14px; border: 1px solid transparent; font-weight: 600; }
+.primary { background: var(--accent); color: var(--accent-ink); }
+.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.ghost:hover { background: var(--sunk); }
+.danger { background: transparent; color: var(--warn); border-color: var(--line); }
+
+/* Summary strip */
+#summary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 10px; }
+.kcal { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.kcal .big { font: 700 2rem/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kcal .unit, .kcal .grams { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { height: 8px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.3s ease; }
+.bar.over .fill { background: var(--warn); }
+.left { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.macros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.macro { display: grid; gap: 2px; background: var(--sunk); border-radius: 8px; padding: 8px 10px; }
+.macro .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.macro .val { font: 500 0.95rem var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Note */
+.note { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.note-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.file { font: 0.82rem var(--font-mono); color: var(--muted); }
+.tabs { display: flex; background: var(--sunk); border-radius: 8px; padding: 3px; }
+.tabs button { border: 0; background: transparent; color: var(--muted); padding: 5px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+#preview { padding: 6px 18px 20px; min-width: 0; }
+#preview h2 { font: 700 1.45rem/1.2 var(--font-display); margin: 14px 0 6px; }
+#preview h3 { font: 600 1.05rem/1.3 var(--font-body); margin: 18px 0 8px; }
+#preview p { margin: 6px 0; }
+#source-wrap { padding: 0; }
+#source { display: block; width: 100%; min-height: 420px; border: 0; resize: vertical; padding: 16px 18px; font: 0.82rem/1.6 var(--font-mono); background: var(--surface); color: var(--ink); }
+#source:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.source-hint { margin: 0; padding: 8px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.82rem; }
+
+.table-wrap { overflow-x: auto; margin: 4px -4px; padding: 0 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; white-space: nowrap; }
+thead tr:not(.refs) th { background: var(--sunk); font-weight: 600; }
+tr.refs th, td.rownum, th.rownum { background: var(--bg); color: var(--faint); font: 500 0.68rem var(--font-mono); text-align: center; padding: 2px 6px; }
+tbody td:nth-child(2) { white-space: normal; min-width: 7.5em; }
+@media (max-width: 480px) { th, td { padding: 5px 6px; } table { font-size: 0.82rem; } }
+td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+td.calc { color: var(--accent); font-weight: 500; cursor: help; }
+td.err { color: var(--warn); }
+tr.food { cursor: pointer; }
+tr.food:hover td:not(.rownum), tr.food:focus-visible td:not(.rownum) { background: var(--accent-soft); }
+tr.food:focus-visible { outline: none; }
+tr.summary td { background: var(--bg); }
+.tip { margin: 10px 0 0; color: var(--faint); font-size: 0.82rem; }
+
+.flag { display: inline-block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 2px 8px; }
+
+/* Bottom sheet */
+#sheet { position: fixed; inset: 0; background: rgb(10 16 12 / 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 10; padding-top: env(safe-area-inset-top, 0px); }
+.sheet-panel { background: var(--surface); width: 100%; max-width: 560px; max-height: 88%; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px); animation: up 0.18s ease-out; }
+@media (min-width: 640px) { #sheet { align-items: center; } .sheet-panel { border-radius: 16px; } }
+@keyframes up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sheet-panel { animation: none; } .bar .fill { transition: none; } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.sheet-head h2 { margin: 0; font: 700 1.15rem/1.25 var(--font-display); min-width: 0; overflow-wrap: anywhere; }
+#sheet-close { border: 0; background: var(--sunk); color: var(--muted); width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; font-size: 1.1rem; line-height: 1; }
+#sheet-body { padding: 14px 16px 18px; overflow-y: auto; display: grid; gap: 12px; align-content: start; }
+
+input, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; min-width: 0; }
+input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.search-row, .portion-row { display: flex; gap: 8px; }
+.search-row input { flex: 1; }
+.portion-row input { width: 7em; font-family: var(--font-mono); }
+.portion-row select { flex: 1; }
+.hint { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.results { display: grid; gap: 2px; }
+.section { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); margin: 8px 0 2px; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 9px 10px; color: var(--ink); width: 100%; }
+.item:hover { background: var(--sunk); }
+.item-name { min-width: 0; overflow-wrap: anywhere; }
+.item-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.badge { border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; font-size: 0.72rem; }
+.pad { padding: 8px 10px; margin: 0; }
+.preview { background: var(--sunk); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; }
+.preview .macro { background: var(--surface); }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.custom { display: grid; gap: 10px; }
+.field { display: grid; gap: 4px; font-size: 0.82rem; color: var(--muted); font-weight: 500; }
+.field input { color: var(--ink); font-size: 0.95rem; font-weight: 400; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.error { margin: 0; color: var(--warn); font-size: 0.88rem; }
+footer { color: var(--faint); font-size: 0.8rem; }
+footer a { color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Cal Track</h1>
+      <p>Look up a food, pick a quantity and unit, and it lands in your note as a Table Calc row. The totals are live formulas.</p>
+    </div>
+    <div class="head-actions">
+      <button id="reset" class="ghost" type="button">Reset</button>
+      <button id="add" class="primary" type="button">+ Add food</button>
+    </div>
+  </header>
+
+  <section id="summary" aria-label="Today’s totals"></section>
+
+  <article class="note">
+    <div class="note-bar">
+      <span class="file">Daily/2026-10-06.md <span id="example-flag" class="flag">Example entries</span></span>
+      <div class="tabs" role="tablist" aria-label="View">
+        <button type="button" role="tab" data-view="preview" aria-selected="true">Preview</button>
+        <button type="button" role="tab" data-view="source" aria-selected="false">Source</button>
+      </div>
+    </div>
+    <div id="preview"></div>
+    <div id="source-wrap" hidden>
+      <label class="sr" for="source">Note source</label>
+      <textarea id="source" spellcheck="false"></textarea>
+      <p class="source-hint">This is the markdown the plugin writes. Edit it and switch back to Preview. Table Calc formulas like <code>=SUM(D1:D4)</code> are evaluated by its real engine.</p>
+    </div>
+  </article>
+
+  <p class="tip">Tap a food row to change its quantity or unit, swap the food, or remove it. Hover a green total to see its formula.</p>
+
+  <footer>Sample foods use approximate USDA values. The Obsidian plugin searches USDA FoodData Central and Open Food Facts live. Source: <a href="https://github.com/BenRuns/Obsidian-cal-track" target="_blank" rel="noopener">BenRuns/Obsidian-cal-track</a></footer>
+</div>
+
+<div id="sheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-head">
+      <h2 id="sheet-title"></h2>
+      <button id="sheet-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div id="sheet-body"></div>
+  </div>
+</div>
