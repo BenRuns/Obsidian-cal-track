@@ -11,13 +11,26 @@ const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1';
 const OFF_BASE = 'https://world.openfoodfacts.org';
 const USER_AGENT = 'ObsidianCalTrack/0.1 (https://github.com/BenRuns/Obsidian-cal-track)';
 
+function httpError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
 async function getJson(request, url, headers, { notFoundOk = false } = {}) {
   const res = await request({ url, method: 'GET', headers, throw: false });
   if (notFoundOk && res.status === 404) return null;
-  if (res.status === 429)
-    throw new Error('Rate limited — try again shortly, or add your own USDA API key in settings.');
-  if (res.status === 403) throw new Error('USDA rejected the API key — check it in settings.');
-  if (res.status < 200 || res.status >= 300) throw new Error(`Lookup failed (HTTP ${res.status})`);
+  if (res.status === 429) {
+    throw httpError(
+      'Rate limited — try again shortly, or add your own USDA API key in settings.',
+      'rate_limited',
+    );
+  }
+  if (res.status === 403)
+    throw httpError('USDA rejected the API key — check it in settings.', 'forbidden');
+  if (res.status < 200 || res.status >= 300) {
+    throw httpError(`Lookup failed (HTTP ${res.status})`, 'http_error');
+  }
   return res.json;
 }
 
@@ -129,11 +142,15 @@ async function searchAll(request, query, settings) {
   const settled = await Promise.allSettled(jobs.map(([, p]) => p));
   const foods = [];
   const errors = [];
+  const rateLimited = [];
   settled.forEach((r, i) => {
     if (r.status === 'fulfilled') foods.push(...r.value);
-    else errors.push(`${jobs[i][0]}: ${r.reason?.message || r.reason}`);
+    else {
+      errors.push(`${jobs[i][0]}: ${r.reason?.message || r.reason}`);
+      if (r.reason?.code === 'rate_limited') rateLimited.push(jobs[i][0]);
+    }
   });
-  return { foods, errors, barcode: code };
+  return { foods, errors, barcode: code, rateLimited };
 }
 
 module.exports = {

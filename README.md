@@ -50,6 +50,8 @@ Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and d
 
 Search shows **My foods** first, then recently used foods, then the online results.
 
+**Caching:** a search is cached for 10 minutes, and a food's full portion list (the extra request USDA needs for "1 medium", "1 cup", etc.) is cached for an hour — so retyping, reopening "Adjust" on the same food, or picking the same food twice doesn't cost another request. If a source returns a 429 (rate limited), it's skipped automatically for the next 15 minutes rather than retried on every keystroke; the status line says how long is left. The `DEMO_KEY` quota is shared across every user of this plugin without their own key, so it can already be used up before you've searched anything yourself — a [personal key](https://fdc.nal.usda.gov/api-key-signup) isn't shared and clears any active cooldown as soon as you save it.
+
 ### My foods
 
 Your own food database is a normal note, `Cal Track/Foods.md` by default (you can change the path in settings). You can read it, edit it by hand, and it syncs with the rest of your vault:

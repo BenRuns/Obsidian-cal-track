@@ -11,7 +11,9 @@ const {
   normalizePath,
   requestUrl,
 } = require('obsidian');
-const { searchAll, getUsdaFood, asBarcode } = require('./api');
+const { getUsdaFood, asBarcode } = require('./api');
+const { TTLCache } = require('./cache');
+const { cachedSearch, RATE_LIMIT_COOLDOWN_MS } = require('./lookup');
 const { displayName, nutrientsFor, makeCustomFood } = require('./food');
 const { toGrams, unitsFor, normalizeUnit } = require('./units');
 const { parseFoodFile, upsertFood, withPortion, newFileLines } = require('./foodfile');
@@ -81,6 +83,8 @@ class CalTrackSettingTab extends PluginSettingTab {
           .setValue(s.usdaApiKey)
           .onChange(async (v) => {
             s.usdaApiKey = v.trim();
+            // A DEMO_KEY cooldown doesn't apply to a newly-added personal key.
+            delete this.plugin.rateLimitCooldowns.USDA;
             await save();
           }),
       );
@@ -282,7 +286,7 @@ class FoodSearchModal extends Modal {
     }
     const seq = ++this.searchSeq;
     this.status.setText(asBarcode(q) ? 'Looking up barcode…' : 'Searching…');
-    const { foods, errors, barcode } = await searchAll(requestUrl, q, s);
+    const { foods, errors, barcode } = await this.plugin.lookupFoods(q);
     if (seq !== this.searchSeq) return; // superseded by newer typing / closed
     this.renderLocal();
     const none = barcode
@@ -311,22 +315,17 @@ class FoodSearchModal extends Modal {
   }
 
   async choose(food) {
-    let chosen = food;
     // Search hits without household portions only offer g/oz; the full record
-    // usually has "1 medium", "1 cup", etc.
-    if (food.source === 'usda' && food.portions.length === 0) {
-      this.status.setText('Loading portions…');
-      try {
-        const full = await getUsdaFood(
-          requestUrl,
-          food.id.slice(5),
-          this.plugin.settings.usdaApiKey,
-        );
-        if (full.per100g.kcal !== null) chosen = { ...food, portions: full.portions };
-      } catch (_) {
-        /* fall back to mass units only */
-      }
-    }
+    // usually has "1 medium", "1 cup", etc. getFullPortions() is a no-op for
+    // anything that doesn't need it, so only show a status message when this
+    // will actually hit the network (not cached from a previous lookup).
+    const willFetch =
+      food.source === 'usda' &&
+      food.portions.length === 0 &&
+      !this.plugin.portionCache.get(food.id);
+    if (willFetch) this.status.setText('Loading portions…');
+    const portions = await this.plugin.getFullPortions(food);
+    const chosen = portions.length ? { ...food, portions } : food;
     this.close();
     this.onChoose(chosen);
   }
@@ -566,6 +565,11 @@ class CustomFoodModal extends Modal {
 class CalTrackPlugin extends Plugin {
   async onload() {
     await this.loadAll();
+    // In-memory only — cleared on reload. They only ever save a network
+    // call, never hold data of their own, so nothing is lost by that.
+    this.searchCache = new TTLCache({ ttlMs: 10 * 60 * 1000, maxEntries: 60 });
+    this.portionCache = new TTLCache({ ttlMs: 60 * 60 * 1000, maxEntries: 60 });
+    this.rateLimitCooldowns = {};
     this.addSettingTab(new CalTrackSettingTab(this.app, this));
 
     this.addRibbonIcon('utensils', 'Add food to log', () => {
@@ -672,6 +676,38 @@ class CalTrackPlugin extends Plugin {
 
   async saveAll() {
     await this.saveData({ settings: this.settings, foods: this.foods, recent: this.recent });
+  }
+
+  // ── Food lookups (cached, rate-limit aware — see lookup.js) ──
+
+  async lookupFoods(query) {
+    return cachedSearch({
+      request: requestUrl,
+      cache: this.searchCache,
+      cooldowns: this.rateLimitCooldowns,
+      settings: this.settings,
+      query,
+    });
+  }
+
+  // A USDA search hit without household portions ("1 medium", "1 cup") needs
+  // one more request for the full record, which usually has them. Cached per
+  // food id — it's the same answer every time, so there's no reason to pay
+  // for that extra request twice.
+  async getFullPortions(food) {
+    if (food.source !== 'usda' || food.portions.length) return food.portions;
+    const cached = this.portionCache.get(food.id);
+    if (cached) return cached;
+    try {
+      const full = await getUsdaFood(requestUrl, food.id.slice(5), this.settings.usdaApiKey);
+      if (full.per100g.kcal === null) return food.portions;
+      this.portionCache.set(food.id, full.portions);
+      return full.portions;
+    } catch (e) {
+      if (e?.code === 'rate_limited')
+        this.rateLimitCooldowns.USDA = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+      return food.portions; // fall back to mass units only
+    }
   }
 
   // Foods are keyed by the name written into the table, so a row can be
