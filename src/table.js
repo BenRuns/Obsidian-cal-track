@@ -2,7 +2,8 @@
 
 // ─── Markdown food-log tables ─────────────────────────────────────────────────
 //
-// A food log is an ordinary Table Calc table: a {{calc}} line, a header row, a
+// A food log is an ordinary Table Calc table: a {{calc}} line, a blank line
+// (Obsidian won't render a table without one above it), a header row, a
 // separator, food rows, then summary rows (Total / Goal / Remaining) whose
 // cells are Table Calc formulas like =SUM(D1:D3).
 //
@@ -109,8 +110,9 @@ function columnKey(header) {
 
 // Returns every food-log table in the note: one whose header has a Food
 // column and a calories column.
-//   { start, end, hasMarker, cols: { food: 0, qty: 1, ... }, width }
-// start = header line, end = last table line (inclusive).
+//   { start, end, hasMarker, markerLine, cols: { food: 0, qty: 1, ... }, width }
+// start = header line, end = last table line (inclusive), markerLine = the
+// {{calc}} line above it (blank lines allowed in between), or -1.
 function findTables(lines) {
   const tables = [];
   let i = 0;
@@ -132,10 +134,12 @@ function findTables(lines) {
     if (cols.food !== undefined && cols.kcal !== undefined) {
       let m = start - 1;
       while (m >= 0 && lines[m].trim() === '') m--;
+      const hasMarker = m >= 0 && lines[m].trim() === CALC_MARKER;
       tables.push({
         start,
         end,
-        hasMarker: m >= 0 && lines[m].trim() === CALC_MARKER,
+        hasMarker,
+        markerLine: hasMarker ? m : -1,
         cols,
         width: headers.length,
       });
@@ -145,8 +149,13 @@ function findTables(lines) {
   return tables;
 }
 
+// The table at a line, counting its {{calc}} line and the blank line under it.
 function tableAt(lines, lineNo) {
-  return findTables(lines).find((t) => lineNo >= t.start - 1 && lineNo <= t.end) || null;
+  return (
+    findTables(lines).find(
+      (t) => lineNo >= (t.hasMarker ? t.markerLine : t.start) && lineNo <= t.end,
+    ) || null
+  );
 }
 
 // First data line of a table, and 1-based Table Calc row number of a line.
@@ -337,7 +346,7 @@ function buildTable({ macros = true, goal = 0 } = {}) {
       ),
     );
   }
-  return [CALC_MARKER, header, sep, ...rows];
+  return [CALC_MARKER, '', header, sep, ...rows];
 }
 
 module.exports = {

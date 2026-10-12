@@ -876,7 +876,7 @@ class CalTrackPlugin extends Plugin {
     } else {
       const block = buildTable(this.tableOptions());
       const [t] = findTables(block);
-      // The edit covers the table rows only; keep the {{calc}} line above them.
+      // The edit covers the table rows only; keep the {{calc}} and blank lines above them.
       const edit = insertFoodRow(block, t, values);
       this.insertBlockAtCursor(editor, [...block.slice(0, edit.from), ...edit.lines]);
     }

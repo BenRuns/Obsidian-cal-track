@@ -40,6 +40,7 @@ test('splitRow keeps escaped pipes and empty cells', () => {
 test('buildTable makes an empty Table Calc log', () => {
   assert.deepEqual(buildTable({ macros: true }), [
     '{{calc}}',
+    '',
     '| Food | Qty | Unit | kcal | Protein | Carbs | Fat |',
     '| --- | ---: | --- | ---: | ---: | ---: | ---: |',
     '| **Total** |  |  | =SUM(D0:D0) | =SUM(E0:E0) | =SUM(F0:F0) | =SUM(G0:G0) |',
@@ -68,33 +69,42 @@ test('findTables only matches food logs and maps columns by header', () => {
   assert.equal(tableAt(lines, 2), null);
 });
 
+test('tableAt counts the {{calc}} line and the blank line under it', () => {
+  const lines = ['intro', '', ...buildTable()];
+  const [t] = findTables(lines);
+  assert.equal(t.markerLine, 2);
+  assert.deepEqual(tableAt(lines, 2), t);
+  assert.deepEqual(tableAt(lines, 3), t);
+  assert.equal(tableAt(lines, 1), null);
+});
+
 test('adding foods grows the totals range', () => {
   let lines = buildTable({ macros: true });
   lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], banana));
-  assert.equal(lines[3], '| Banana | 1 | medium | 105 | 1.3 | 26.9 | 0.4 |');
+  assert.equal(lines[4], '| Banana | 1 | medium | 105 | 1.3 | 26.9 | 0.4 |');
   assert.equal(
-    lines[4],
+    lines[5],
     '| **Total** |  |  | =SUM(D1:D1) | =SUM(E1:E1) | =SUM(F1:F1) | =SUM(G1:G1) |',
   );
 
   lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], oats));
-  assert.equal(lines[4], '| Oats | 40 | g | 150 | 5 | 27 | 2.5 |');
+  assert.equal(lines[5], '| Oats | 40 | g | 150 | 5 | 27 | 2.5 |');
   assert.equal(
-    lines[5],
+    lines[6],
     '| **Total** |  |  | =SUM(D1:D2) | =SUM(E1:E2) | =SUM(F1:F2) | =SUM(G1:G2) |',
   );
 });
 
 test('goal and remaining rows keep pointing at the right rows', () => {
   let lines = buildTable({ macros: false, goal: 2000 });
-  assert.deepEqual(lines.slice(3), [
+  assert.deepEqual(lines.slice(4), [
     '| **Total** |  |  | =SUM(D0:D0) |',
     '| **Goal** |  |  | 2000 |',
     '| **Remaining** |  |  | =D2-D1 |',
   ]);
   lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], banana));
   lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], oats));
-  assert.deepEqual(lines.slice(3), [
+  assert.deepEqual(lines.slice(4), [
     '| Banana | 1 | medium | 105 |',
     '| Oats | 40 | g | 150 |',
     '| **Total** |  |  | =SUM(D1:D2) |',
@@ -123,15 +133,15 @@ test('readFoodRow skips header, separator and summary rows', () => {
   let lines = buildTable();
   lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], banana));
   const t = findTables(lines)[0];
-  assert.equal(readFoodRow(lines, t, 1), null);
   assert.equal(readFoodRow(lines, t, 2), null);
-  assert.deepEqual(readFoodRow(lines, t, 3), {
+  assert.equal(readFoodRow(lines, t, 3), null);
+  assert.deepEqual(readFoodRow(lines, t, 4), {
     name: 'Banana',
     qty: '1',
     unit: 'medium',
     kcal: '105',
   });
-  assert.equal(readFoodRow(lines, t, 4), null);
+  assert.equal(readFoodRow(lines, t, 5), null);
 });
 
 test('updateFoodRow rewrites values and preserves extra columns', () => {
@@ -149,8 +159,8 @@ test('deleteFoodRow shrinks ranges and shifts later refs', () => {
   let lines = buildTable({ macros: false, goal: 2000 });
   for (const f of [banana, oats, banana])
     lines = apply(lines, insertFoodRow(lines, findTables(lines)[0], f));
-  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 4)); // Oats = row 2
-  assert.deepEqual(lines.slice(3), [
+  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 5)); // Oats = row 2
+  assert.deepEqual(lines.slice(4), [
     '| Banana | 1 | medium | 105 |',
     '| Banana | 1 | medium | 105 |',
     '| **Total** |  |  | =SUM(D1:D2) |',
@@ -158,9 +168,9 @@ test('deleteFoodRow shrinks ranges and shifts later refs', () => {
     '| **Remaining** |  |  | =D4-D3 |',
   ]);
   // Removing every food returns to the empty-sum form.
-  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 3));
-  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 3));
-  assert.deepEqual(lines.slice(3), [
+  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 4));
+  lines = apply(lines, deleteFoodRow(lines, findTables(lines)[0], 4));
+  assert.deepEqual(lines.slice(4), [
     '| **Total** |  |  | =SUM(D0:D0) |',
     '| **Goal** |  |  | 2000 |',
     '| **Remaining** |  |  | =D2-D1 |',

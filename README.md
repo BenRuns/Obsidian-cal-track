@@ -4,6 +4,7 @@ Log what you eat into a [Table Calc](https://github.com/BenRuns/table-calc-plugi
 
 ```markdown
 {{calc}}
+
 | Food | Qty | Unit | kcal | Protein | Carbs | Fat |
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
 | Bananas, raw | 1 | medium | 105 | 1.3 | 26.9 | 0.4 |
@@ -92,7 +93,7 @@ Columns are found by their header names, so you can reorder them, drop the macro
 ## Installation (manual)
 
 1. Install and enable **Table Calc**.
-2. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
+2. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/BenRuns/Obsidian-cal-track/releases/latest).
 3. Copy them into `<vault>/.obsidian/plugins/cal-track/`.
 4. **Settings → Community plugins** → reload → enable **Cal Track**.
 
