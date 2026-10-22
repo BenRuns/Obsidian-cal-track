@@ -219,3 +219,62 @@ test('rate limited by Search-a-licious: no second request to the classic search'
   assert.equal(calls.length, 1);
   assert.match(errors[0], /Rate limited/);
 });
+
+const { getUsdaFood, backoffDelays } = require('../src/api');
+
+test('backoff delays double each retry', () => {
+  assert.deepEqual(backoffDelays(3, 500), [500, 1000, 2000]);
+});
+
+// Stub that answers a sequence of responses in order; an Error is thrown.
+function sequence(responses) {
+  const calls = [];
+  const request = async ({ url }) => {
+    calls.push(url);
+    const res = responses[Math.min(calls.length - 1, responses.length - 1)];
+    if (res instanceof Error) throw res;
+    return res;
+  };
+  return { request, calls };
+}
+
+const noWait = { retryDelays: [0, 0, 0] };
+
+test('USDA search retries a transient server error and returns the result', async () => {
+  const { request, calls } = sequence([{ status: 502, json: null }, usdaOk]);
+  const foods = await searchUsda(request, 'egg', '', noWait);
+  assert.equal(calls.length, 2);
+  assert.equal(foods[0].name, 'Egg');
+});
+
+test('USDA search retries a dropped connection', async () => {
+  const { request, calls } = sequence([new Error('net::ERR_CONNECTION_RESET'), usdaOk]);
+  const foods = await searchUsda(request, 'egg', '', noWait);
+  assert.equal(calls.length, 2);
+  assert.equal(foods[0].name, 'Egg');
+});
+
+test('USDA search gives up after the retries run out', async () => {
+  const { request, calls } = sequence([{ status: 500, json: null }]);
+  await assert.rejects(searchUsda(request, 'egg', '', noWait), /Lookup failed \(HTTP 500\)/);
+  assert.equal(calls.length, 4);
+});
+
+test('USDA rate limits and bad keys are not retried', async () => {
+  for (const status of [429, 403]) {
+    const { request, calls } = sequence([{ status, json: null }, usdaOk]);
+    await assert.rejects(searchUsda(request, 'egg', '', noWait));
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('USDA full-record fetch retries too', async () => {
+  const food = { fdcId: 9, description: 'Egg', foodNutrients: [{ nutrientId: 1008, value: 143 }] };
+  const { request, calls } = sequence([
+    { status: 504, json: null },
+    { status: 200, json: food },
+  ]);
+  const full = await getUsdaFood(request, '9', '', noWait);
+  assert.equal(calls.length, 2);
+  assert.equal(full.name, 'Egg');
+});

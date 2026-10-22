@@ -9,6 +9,7 @@
 - Open My foods command; My foods note path setting
 - Barcode lookup: type a UPC / EAN into the search box to find the product on Open Food Facts and USDA branded foods
 - Search results and a food's full portion list are cached briefly, and a rate-limited source is backed off automatically instead of retried on every keystroke
+- USDA lookups retry automatically, with exponential backoff (up to 3 times), when FoodData Central has a momentary server error or dropped connection
 - New food logs put a blank line between `{{calc}}` and the table, so they render as a table on any Table Calc version (Obsidian won't render a table without a blank line above it)
 
 ## 0.1.0

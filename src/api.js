@@ -26,8 +26,40 @@ function httpError(message, code) {
   return err;
 }
 
-async function getJson(request, url, headers, { notFoundOk = false } = {}) {
-  const res = await request({ url, method: 'GET', headers, throw: false });
+// USDA's FoodData Central fails intermittently (HTTP 500/502/504 or a dropped
+// connection) and the same request usually succeeds a moment later. Failures
+// like these are retried with exponential backoff (0.5 s, 1 s, 2 s) before
+// giving up. Rate limits and bad keys are never retried: another try would
+// fail the same way and spend more of the shared DEMO_KEY quota.
+const USDA_RETRIES = 3;
+const USDA_RETRY_BASE_MS = 500;
+const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
+
+function backoffDelays(retries, baseMs) {
+  return Array.from({ length: retries }, (_, i) => baseMs * 2 ** i);
+}
+
+const USDA_RETRY_DELAYS_MS = backoffDelays(USDA_RETRIES, USDA_RETRY_BASE_MS);
+
+// Up to 50% random jitter, so clients that failed together don't all retry
+// at the same instant.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms * (1 + Math.random() * 0.5)));
+
+async function getJson(request, url, headers, { notFoundOk = false, retryDelays = [] } = {}) {
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = attempt < retryDelays.length;
+    try {
+      res = await request({ url, method: 'GET', headers, throw: false });
+    } catch (e) {
+      // requestUrl rejects on network errors even with throw: false.
+      if (!canRetry) throw e;
+      await sleep(retryDelays[attempt]);
+      continue;
+    }
+    if (!canRetry || !TRANSIENT_STATUSES.has(res.status)) break;
+    await sleep(retryDelays[attempt]);
+  }
   if (notFoundOk && res.status === 404) return null;
   if (res.status === 429) {
     throw httpError(
@@ -49,7 +81,12 @@ async function getJson(request, url, headers, { notFoundOk = false } = {}) {
 // USDA ranks by relevance across all data types; generic foods (Foundation /
 // SR Legacy / Survey) are moved ahead of branded ones so "banana" lists the
 // fruit before banana-flavoured candy. Relevance order is kept within each.
-async function searchUsda(request, query, apiKey, { branded = true, pageSize = 15 } = {}) {
+async function searchUsda(
+  request,
+  query,
+  apiKey,
+  { branded = true, pageSize = 15, retryDelays = USDA_RETRY_DELAYS_MS } = {},
+) {
   const types = ['Foundation', 'SR Legacy', 'Survey (FNDDS)'];
   if (branded) types.push('Branded');
   const params = new URLSearchParams({
@@ -58,15 +95,19 @@ async function searchUsda(request, query, apiKey, { branded = true, pageSize = 1
     pageSize: String(pageSize),
     dataType: types.join(','),
   });
-  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`);
+  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
+    retryDelays,
+  });
   const foods = parseUsdaSearch(json);
   return [...foods.filter((f) => !f.brand), ...foods.filter((f) => f.brand)];
 }
 
 // Full record — has foodPortions, which search results sometimes lack.
-async function getUsdaFood(request, fdcId, apiKey) {
+async function getUsdaFood(request, fdcId, apiKey, { retryDelays = USDA_RETRY_DELAYS_MS } = {}) {
   const params = new URLSearchParams({ api_key: apiKey || 'DEMO_KEY' });
-  const json = await getJson(request, `${USDA_BASE}/food/${fdcId}?${params}`);
+  const json = await getJson(request, `${USDA_BASE}/food/${fdcId}?${params}`, undefined, {
+    retryDelays,
+  });
   return parseUsdaFood(json);
 }
 
@@ -132,14 +173,21 @@ async function lookupOffBarcode(request, code) {
 
 // USDA's Branded foods carry gtinUpc; a search for the number finds them,
 // then only exact barcode matches are kept.
-async function lookupUsdaBarcode(request, code, apiKey) {
+async function lookupUsdaBarcode(
+  request,
+  code,
+  apiKey,
+  { retryDelays = USDA_RETRY_DELAYS_MS } = {},
+) {
   const params = new URLSearchParams({
     api_key: apiKey || 'DEMO_KEY',
     query: code,
     pageSize: '10',
     dataType: 'Branded',
   });
-  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`);
+  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
+    retryDelays,
+  });
   const hits = (json?.foods || []).filter((f) => sameBarcode(f.gtinUpc, code));
   return parseUsdaSearch({ foods: hits });
 }
@@ -177,6 +225,7 @@ async function searchAll(request, query, settings) {
 }
 
 module.exports = {
+  backoffDelays,
   USER_AGENT,
   searchUsda,
   getUsdaFood,

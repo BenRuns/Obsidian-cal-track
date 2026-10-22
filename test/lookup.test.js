@@ -161,7 +161,7 @@ test('a non-rate-limit error is not cached — it is retried next time', async (
   const { cache, cooldowns } = setup({});
   const flaky = async () => {
     n++;
-    return n === 1 ? { status: 500, json: null } : usdaOk;
+    return n === 1 ? { status: 400, json: null } : usdaOk;
   };
   const a = await cachedSearch({
     request: flaky,
