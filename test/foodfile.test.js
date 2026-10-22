@@ -74,7 +74,7 @@ test('upsertFood creates a file with intro and table', () => {
   const text = upsertFood('', bar);
   const lines = text.trimEnd().split('\n');
   assert.deepEqual(lines.slice(0, -1), newFileLines());
-  assert.equal(lines.at(-1), '| Protein bar | 1 bar = 60 g | 240 | 20 |  |  |  |');
+  assert.equal(lines.at(-1), '| Protein bar | 1 bar = 60 g | 240 | 20 |  |  |  |  |');
 });
 
 test('upsertFood appends to an existing file and replaces by name', () => {

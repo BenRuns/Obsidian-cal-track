@@ -9,7 +9,16 @@ const { parseUsdaSearch, parseUsdaFood, parseOffSearch } = require('./food');
 
 const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1';
 const OFF_BASE = 'https://world.openfoodfacts.org';
-const USER_AGENT = 'ObsidianCalTrack/0.1 (https://github.com/BenRuns/Obsidian-cal-track)';
+// Open Food Facts' newer search service. The classic /cgi/search.pl is often
+// overloaded (HTTP 503) and ignores `fields`, sending whole product records.
+const OFF_SEARCH = 'https://search.openfoodfacts.org';
+const OFF_FIELDS = 'code,product_name,brands,nutriments,serving_size,serving_quantity';
+const { version } = require('../manifest.json');
+
+// Open Food Facts asks every app to identify itself as
+// "AppName/Version (ContactEmail)", so they can reach the maintainer
+// instead of blocking the app's traffic.
+const USER_AGENT = `ObsidianCalTrack/${version} (5211586+BenRuns@users.noreply.github.com; https://github.com/BenRuns/Obsidian-cal-track)`;
 
 function httpError(message, code) {
   const err = new Error(message);
@@ -28,6 +37,9 @@ async function getJson(request, url, headers, { notFoundOk = false } = {}) {
   }
   if (res.status === 403)
     throw httpError('USDA rejected the API key — check it in settings.', 'forbidden');
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw httpError(`Busy right now (HTTP ${res.status}) — try again in a minute.`, 'unavailable');
+  }
   if (res.status < 200 || res.status >= 300) {
     throw httpError(`Lookup failed (HTTP ${res.status})`, 'http_error');
   }
@@ -58,18 +70,30 @@ async function getUsdaFood(request, fdcId, apiKey) {
   return parseUsdaFood(json);
 }
 
+// Search-a-licious first; the classic search only if it fails for a reason
+// other than rate limiting (being rate limited, a second request won't help).
 async function searchOff(request, query, { pageSize = 15 } = {}) {
+  const headers = { 'User-Agent': USER_AGENT };
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      page_size: String(pageSize),
+      fields: OFF_FIELDS,
+    });
+    const json = await getJson(request, `${OFF_SEARCH}/search?${params}`, headers);
+    return parseOffSearch({ products: json?.hits });
+  } catch (e) {
+    if (e?.code === 'rate_limited') throw e;
+  }
   const params = new URLSearchParams({
     search_terms: query,
     search_simple: '1',
     action: 'process',
     json: '1',
     page_size: String(pageSize),
-    fields: 'code,product_name,brands,nutriments,serving_size,serving_quantity',
+    fields: OFF_FIELDS,
   });
-  const json = await getJson(request, `${OFF_BASE}/cgi/search.pl?${params}`, {
-    'User-Agent': USER_AGENT,
-  });
+  const json = await getJson(request, `${OFF_BASE}/cgi/search.pl?${params}`, headers);
   return parseOffSearch(json);
 }
 
@@ -89,14 +113,13 @@ function sameBarcode(a, b) {
 }
 
 async function lookupOffBarcode(request, code) {
-  const fields = 'code,product_name,brands,nutriments,serving_size,serving_quantity';
   // Open Food Facts keys products by EAN-13; a 12-digit UPC-A is the same
   // number with a leading 0, so try that form if the typed one misses.
   const tries = code.length === 12 ? [code, `0${code}`] : [code];
   for (const c of tries) {
     const json = await getJson(
       request,
-      `${OFF_BASE}/api/v2/product/${c}.json?fields=${fields}`,
+      `${OFF_BASE}/api/v2/product/${c}.json?fields=${OFF_FIELDS}`,
       { 'User-Agent': USER_AGENT },
       { notFoundOk: true },
     );
@@ -154,6 +177,7 @@ async function searchAll(request, query, settings) {
 }
 
 module.exports = {
+  USER_AGENT,
   searchUsda,
   getUsdaFood,
   searchOff,

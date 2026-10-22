@@ -27,6 +27,7 @@ const COLUMN_ALIASES = {
   // My-foods file columns (see foodfile.js).
   per: ['per', 'serving', 'per serving', 'basis'],
   portions: ['portions', 'measures'],
+  ingredients: ['ingredients', 'contains'],
 };
 
 const COLUMN_TITLES = {

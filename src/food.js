@@ -197,7 +197,8 @@ function parseOffProduct(p) {
     id: `off:${p.code}`,
     source: 'off',
     name: String(p.product_name || '').trim(),
-    brand: String(p.brands || '')
+    // A comma-separated string from the product API, a list from Search-a-licious.
+    brand: (Array.isArray(p.brands) ? p.brands.join(',') : String(p.brands || ''))
       .split(',')[0]
       .trim(),
     per100g,

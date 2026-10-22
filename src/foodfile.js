@@ -1,6 +1,7 @@
 'use strict';
 
 const { makeCustomFood, splitLeadingAmount } = require('./food');
+const { ingredientsText, parseIngredients } = require('./combo');
 const { normalizeUnit, isMassUnit, isVolumeUnit, MASS_UNITS, toGrams } = require('./units');
 const {
   findTables,
@@ -26,6 +27,9 @@ const {
 //           slices, can be logged).
 // Portions: extra units, ";"-separated, each "name = quantity unit". The
 //           quantity can use any unit the food already understands.
+// Ingredients: only for combos (see combo.js) — "Oats (40 g); Milk (1 cup)".
+//           The numbers in the row are what's logged; the list is kept so the
+//           combo can be edited. A "batch" portion says how many servings it makes.
 
 const FILE_INTRO = [
   'Your foods for Cal Track. Edit freely — one row per food.',
@@ -33,7 +37,7 @@ const FILE_INTRO = [
   '- **Per**: what the numbers are for: `100 g`, `1 bar = 60 g`, or `1 slice` (no weight).',
   '- **Portions**: extra units, separated by `;` — e.g. `bowl = 300 g; scoop = 1.5 tbsp`.',
 ];
-const COLUMNS = ['Food', 'Per', 'kcal', 'Protein', 'Carbs', 'Fat', 'Portions'];
+const COLUMNS = ['Food', 'Per', 'kcal', 'Protein', 'Carbs', 'Fat', 'Portions', 'Ingredients'];
 
 function num(s) {
   const n = parseFloat(String(s ?? '').replace(/,/g, ''));
@@ -90,6 +94,14 @@ function foodFromCells(get) {
     if (!unit || !(grams > 0)) continue;
     food.portions = food.portions.filter((p) => p.unit !== unit);
     food.portions.push({ unit, amount: 1, grams, def: `${formatNumber(amount, 3)} ${defUnit}` });
+  }
+
+  const ingredients = parseIngredients(unescapeCell(get('ingredients')));
+  if (ingredients.length) {
+    food.ingredients = ingredients;
+    const serving = food.portions.find((p) => p.unit === 'serving');
+    const batch = food.portions.find((p) => p.unit === 'batch');
+    food.servings = serving && batch ? Math.round((batch.grams / serving.grams) * 1000) / 1000 : 1;
   }
   return food;
 }
@@ -166,6 +178,7 @@ function foodCells(food) {
     carbs: scaled('carbs', 2),
     fat: scaled('fat', 2),
     portions: escapeCell(portions.join('; ')),
+    ingredients: escapeCell(ingredientsText(food.ingredients)),
   };
 }
 
@@ -191,6 +204,16 @@ function upsertFood(text, food) {
   }
   const values = foodCells(food);
   const key = unescapeCell(values.food).toLowerCase();
+  // A My foods table from before combos has no Ingredients column; add it.
+  if (values.ingredients && table.cols.ingredients === undefined) {
+    for (let i = table.start; i <= table.end; i++) {
+      const cells = splitRow(lines[i]);
+      while (cells.length < table.width) cells.push('');
+      cells.push(i === table.start ? 'Ingredients' : i === table.start + 1 ? '---' : '');
+      lines[i] = joinRow(cells);
+    }
+    table = findTables(lines)[0];
+  }
 
   let at = -1;
   for (let i = table.start + 2; i <= table.end; i++) {
@@ -210,6 +233,19 @@ function upsertFood(text, food) {
   return `${lines.join('\n')}\n`;
 }
 
+// Removes the row for this food name, if there is one. Returns the new text.
+function removeFood(text, name) {
+  const lines = String(text || '').split('\n');
+  const key = String(name).trim().toLowerCase();
+  for (const t of findTables(lines).reverse()) {
+    for (let i = t.end; i >= t.start + 2; i--) {
+      const cell = unescapeCell(splitRow(lines[i])[t.cols.food] ?? '');
+      if (cell.trim().toLowerCase() === key) lines.splice(i, 1);
+    }
+  }
+  return lines.join('\n');
+}
+
 // Returns a copy of the food with a named portion added or replaced.
 // qty/unit must be something toGrams understands for this food.
 function withPortion(food, name, qty, unit) {
@@ -225,4 +261,12 @@ function withPortion(food, name, qty, unit) {
   return { ...food, portions: [...food.portions.filter((p) => p.unit !== label), portion] };
 }
 
-module.exports = { parsePer, parseFoodFile, foodCells, upsertFood, withPortion, newFileLines };
+module.exports = {
+  parsePer,
+  parseFoodFile,
+  foodCells,
+  upsertFood,
+  removeFood,
+  withPortion,
+  newFileLines,
+};

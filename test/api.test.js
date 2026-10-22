@@ -138,3 +138,84 @@ test('unknown barcode returns no foods and no error', async () => {
   assert.deepEqual(foods, []);
   assert.deepEqual(errors, []);
 });
+
+test('Open Food Facts requests identify the app, its version and a contact email', async () => {
+  const { USER_AGENT } = require('../src/api');
+  const { version } = require('../manifest.json');
+  const seen = [];
+  const request = async ({ url, headers }) => {
+    if (url.includes('openfoodfacts.org')) seen.push(headers?.['User-Agent']);
+    // Search-a-licious down, so both search endpoints are used; then a barcode.
+    if (url.startsWith('https://search.openfoodfacts.org')) return { status: 503, json: null };
+    return { status: 200, json: { products: [], status: 0 } };
+  };
+  await searchAll(request, 'egg', { useUsda: false, useOff: true });
+  await searchAll(request, '3017624010701', { useUsda: false, useOff: true });
+  assert.deepEqual(seen, [USER_AGENT, USER_AGENT, USER_AGENT]);
+  assert.match(
+    USER_AGENT,
+    new RegExp(
+      `^ObsidianCalTrack/${version.replace(/\./g, '\\.')} \\(5211586\\+BenRuns@users\\.noreply\\.github\\.com; `,
+    ),
+  );
+});
+
+const offHit = {
+  code: '5000108236832',
+  product_name: 'Oats so simple',
+  brands: ['Quaker', ' Quaker Oats'],
+  nutriments: {
+    'energy-kcal_100g': 379,
+    proteins_100g: 8.9,
+    carbohydrates_100g: 68,
+    fat_100g: 6.4,
+  },
+};
+
+test('Open Food Facts text search uses Search-a-licious', async () => {
+  const { request, calls } = stub({
+    'https://search.openfoodfacts.org/search': { status: 200, json: { hits: [offHit] } },
+  });
+  const { foods, errors } = await searchAll(request, 'oats', { useUsda: false, useOff: true });
+  assert.deepEqual(errors, []);
+  assert.equal(calls.length, 1);
+  const url = new URL(calls[0]);
+  assert.equal(url.searchParams.get('q'), 'oats');
+  assert.match(url.searchParams.get('fields'), /nutriments/);
+  assert.equal(foods[0].name, 'Oats so simple');
+  assert.equal(foods[0].brand, 'Quaker');
+  assert.equal(foods[0].per100g.kcal, 379);
+});
+
+test('Open Food Facts falls back to the classic search when Search-a-licious is down', async () => {
+  const { request, calls } = stub({
+    'https://search.openfoodfacts.org': { status: 503, json: null },
+    'https://world.openfoodfacts.org/cgi/search.pl': {
+      status: 200,
+      json: { products: [{ ...offHit, brands: 'Quaker, Quaker Oats' }] },
+    },
+  });
+  const { foods, errors } = await searchAll(request, 'oats', { useUsda: false, useOff: true });
+  assert.deepEqual(errors, []);
+  assert.equal(calls.length, 2);
+  assert.equal(foods[0].brand, 'Quaker');
+});
+
+test('a 503 from both says the service is busy, not a bare HTTP error', async () => {
+  const { request } = stub({
+    'https://search.openfoodfacts.org': { status: 503, json: null },
+    'https://world.openfoodfacts.org': { status: 503, json: null },
+  });
+  const { foods, errors } = await searchAll(request, 'oats', { useUsda: false, useOff: true });
+  assert.deepEqual(foods, []);
+  assert.match(errors[0], /^Open Food Facts: Busy right now \(HTTP 503\)/);
+});
+
+test('rate limited by Search-a-licious: no second request to the classic search', async () => {
+  const { request, calls } = stub({
+    'https://search.openfoodfacts.org': { status: 429, json: null },
+  });
+  const { errors } = await searchAll(request, 'oats', { useUsda: false, useOff: true });
+  assert.equal(calls.length, 1);
+  assert.match(errors[0], /Rate limited/);
+});

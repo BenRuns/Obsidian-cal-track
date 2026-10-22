@@ -1,21 +1,32 @@
 # Cal Track — Obsidian Plugin
 
-Log what you eat into a [Table Calc](https://github.com/BenRuns/table-calc-plugin) table. Search a food database, pick a quantity and unit ("1 medium", "2 tbsp", "150 g", "6 oz"), and Cal Track writes a row with calories and macros. Table Calc keeps the totals live.
+Log what you eat into your daily notes. Search a food database, pick a quantity and unit ("1 medium", "2 tbsp", "150 g", "6 oz"), and Cal Track records the calories and macros. Each daily note shows that day's foods with live totals.
 
-```markdown
-{{calc}}
+Every entry goes into one CSV file in your vault, `Cal Track/log.csv`, with one row per food eaten:
 
-| Food | Qty | Unit | kcal | Protein | Carbs | Fat |
-| --- | ---: | --- | ---: | ---: | ---: | ---: |
-| Bananas, raw | 1 | medium | 105 | 1.3 | 26.9 | 0.4 |
-| Total 0% Greek Yoghurt (Fage) | 1 | cup | 123 | 23.4 | 6.8 | 0 |
-| Oats | 40 | g | 150 | 5 | 27 | 2.5 |
-| **Total** |  |  | =SUM(D1:D3) | =SUM(E1:E3) | =SUM(F1:F3) | =SUM(G1:G3) |
-| **Goal** |  |  | 2000 |  |  |  |
-| **Remaining** |  |  | =D5-D4 |  |  |  |
+```csv
+id,date,time,meal,food,qty,unit,kcal,protein,carbs,fat
+mgx3k2a1b,2026-10-15,08:05,Breakfast,"Bananas, raw",1,medium,105,1.3,26.9,0.4
+mgx3m9c4d,2026-10-15,12:30,Lunch,Oats,40,g,150,5,27,2.5
 ```
 
-> **Requires Table Calc** for the `=SUM(...)` totals to render. Without it the rows still work, but the summary rows show raw formulas.
+Your daily notes don't hold any food data. Each one has a `cal-track` block that shows the rows for its date:
+
+````markdown
+```cal-track
+```
+````
+
+It renders as a table, grouped by meal with a subtotal for each, with Total (and Goal / Remaining, if you set a goal), buttons to adjust or remove each food, and an **Add food** button. It updates as soon as the log changes, including when you edit the CSV by hand.
+
+> **Requires daily notes.** Turn on daily notes in the [Periodic Notes](https://github.com/liamcain/obsidian-periodic-notes) plugin or Obsidian's core **Daily notes** plugin. Cal Track uses their folder, date format and template.
+
+> **Syncing:** all your entries live in that one CSV file. If you log food on two devices before they've synced with each other (say, on your phone while offline, then on your laptop), your sync service ends up with two different versions of the file, and may not combine them:
+> - **Obsidian Sync** merges changes in Markdown notes, but not in other files such as this CSV. For those, the newer version wins, so the other device's entries can be lost without warning.
+> - **iCloud, Dropbox, Syncthing and others** usually keep one version and save the other as a conflict copy next to it (e.g. `log (conflicted copy).csv`). The entries in the copy are safe, but Cal Track won't show them until you paste them back into `log.csv`.
+> - **Git** reports a merge conflict for you to resolve.
+>
+> To avoid it, let a device finish syncing before you log food on another one.
 
 ---
 
@@ -23,17 +34,36 @@ Log what you eat into a [Table Calc](https://github.com/BenRuns/table-calc-plugi
 
 | Command | What it does |
 |---------|--------------|
-| **Add food to log** | Search → pick a quantity and unit → adds a row. It goes into the log your cursor is in, or the first log in the note. If the note has no log yet, a new one is created at the cursor. Also on the ribbon (🍴) and in the editor's right-click / long-press menu. |
-| **Adjust food at cursor** | Change the quantity or unit of the row your cursor is on; calories and macros recalculate. **Different food…** swaps the food. |
-| **Remove food at cursor** | Deletes the row and fixes up the totals. |
-| **Insert empty food log** | Drops in an empty log table. |
+| **Add food to today** | Search → pick a quantity and unit → adds the food to today's log. Creates today's daily note from your template if it doesn't exist yet, and adds the `cal-track` block to it if it's missing. Also on the ribbon (🍴). |
+| **Open today's food log** | Opens today's daily note, creating it (with the block) if needed. |
+| **New combo** | Saves several foods as one, for meals you eat often or recipes. See Combos. |
 | **Open My foods** | Opens your food database note, creating it if needed. |
 
-When adding or removing rows, Cal Track rewrites the table's formulas the way a spreadsheet would. `=SUM(D1:D3)` becomes `=SUM(D1:D4)`, and `Remaining` keeps pointing at `Total` and `Goal`. If you add or delete rows by hand, re-check the formulas: Table Calc references are positional.
+In a daily note's block:
+- **Add food** logs to that note's day, so you can fill in yesterday from yesterday's note.
+- ✏️ changes a food's quantity or unit, and calories and macros recalculate. **Different food…** swaps the food.
+- 🗑 removes it.
+- ➕ next to a meal heading adds a food to that meal.
+
+### Meals
+
+When you add a food, pick a meal for it next to the quantity and unit: Breakfast, Lunch, Dinner or Snack by default, or your own list in settings. For today's foods the picker starts on a guess from the time of day (breakfast before 11:00, lunch until 15:00, dinner 17:00–22:00, otherwise snack). Pick **No meal** to leave it unlabeled. ✏️ changes a food's meal later.
+
+The daily log groups foods under their meals, in your list's order, with a subtotal for each. Meals you've since removed from the list still show, after the others. If no food that day has a meal, the log is a plain list.
+
+A log file from before meals were added gets the new `meal` column the next time Cal Track writes to it; existing rows are kept, with no meal.
+
+A block outside a daily note needs a date: put a line like `date: 2026-10-15` inside it.
+
+### The log file
+
+`log.csv` is a normal CSV file, so you can open it in Excel, Numbers or Google Sheets to chart your history. Obsidian doesn't show CSV files in the file explorer unless you turn on **Settings → Files and links → Detect all file extensions**.
+
+You can edit it by hand. Columns are found by header name, so a file with columns in another order still reads, and rows without an `id` get one the next time Cal Track writes the file. Cal Track rewrites the whole file in its own column order when you adjust or remove a food, so extra columns you added are dropped.
 
 ### Barcodes
 
-Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and dashes are fine) into the search box. Cal Track looks it up on Open Food Facts and in USDA's branded foods instead of running a text search. A 12- or 13-digit number is looked up as soon as it's complete; press Enter for other lengths. If nothing is found, use **+ Custom** to enter it from the label.
+Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and dashes are fine) into the search box. Cal Track looks it up on Open Food Facts and in USDA's branded foods instead of running a text search. A 12- or 13-digit number is looked up as soon as it's complete; press Enter for other lengths. If there's no product for that number, Cal Track tells you which databases it checked, or why one couldn't be checked (e.g. rate limited), with an **Add from label** button to enter the food from its nutrition label.
 
 ### Units
 
@@ -45,13 +75,33 @@ Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and d
 
 | Source | Good for | Key |
 |--------|----------|-----|
-| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Generic foods (banana, chicken breast) and US brands | Optional. The shared `DEMO_KEY` allows about 30 lookups an hour; a [free personal key](https://fdc.nal.usda.gov/api-key-signup) gives 1,000. |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Generic foods (banana, chicken breast) and US brands | Optional. The shared `DEMO_KEY` allows 30 lookups an hour and 50 a day; a [free personal key](#getting-a-usda-key) gives 1,000 an hour. |
 | [Open Food Facts](https://world.openfoodfacts.org/) | Packaged foods worldwide | None |
 | **My foods** | Your own foods and portions, kept in a note in your vault | — |
 
-Search shows **My foods** first, then recently used foods, then the online results.
+Typing filters **My foods** and recently used foods instantly. To search USDA and Open Food Facts, press **Enter** or tap **Search**. Results show under your own foods. Online searches don't run as you type: Open Food Facts allows 10 searches a minute and asks apps not to search on every keystroke, and USDA's shared `DEMO_KEY` allows 50 lookups a day. A complete 12- or 13-digit barcode is the exception (see Barcodes).
 
-**Caching:** a search is cached for 10 minutes, and a food's full portion list (the extra request USDA needs for "1 medium", "1 cup", etc.) is cached for an hour — so retyping, reopening "Adjust" on the same food, or picking the same food twice doesn't cost another request. If a source returns a 429 (rate limited), it's skipped automatically for the next 15 minutes rather than retried on every keystroke; the status line says how long is left. The `DEMO_KEY` quota is shared across every user of this plugin without their own key, so it can already be used up before you've searched anything yourself — a [personal key](https://fdc.nal.usda.gov/api-key-signup) isn't shared and clears any active cooldown as soon as you save it.
+**Caching:** a search is cached for 10 minutes, and a food's full portion list (the extra request USDA needs for "1 medium", "1 cup", etc.) is cached for an hour — so searching again, reopening "Adjust" on the same food, or picking the same food twice doesn't cost another request. If a source returns a 429 (rate limited), it's skipped automatically for the next 15 minutes rather than retried on every search; the status line says how long is left. The `DEMO_KEY` quota is shared across every user of this plugin without their own key, so it can already be used up before you've searched anything yourself — a [personal key](https://fdc.nal.usda.gov/api-key-signup) isn't shared and clears any active cooldown as soon as you save it.
+
+### Getting a USDA key
+
+A personal key is free and takes about a minute. Open Food Facts doesn't need one.
+
+1. Go to [fdc.nal.usda.gov/api-key-signup](https://fdc.nal.usda.gov/api-key-signup).
+2. Enter your first name, last name and email address, and submit. Your key appears on the page and is emailed to you.
+3. In Obsidian, open **Settings → Cal Track → USDA API key**:
+   - **Obsidian 1.11.4 or later:** choose **Create new secret**, give it a name (e.g. `usda`), and paste the key. It's saved in Obsidian's keychain (Settings → Keychain), not in the plugin's files.
+   - **Older versions:** paste the key into the text field.
+
+   It works right away.
+
+Your key allows 1,000 lookups an hour, just for you, instead of sharing `DEMO_KEY` with everyone else. It's an api.data.gov key, so it also works with other U.S. government APIs.
+
+**Where the key is kept:**
+- **In the keychain (1.11.4+):** stored on that device only, outside your vault, and not synced. Cal Track saves just the secret's name. Set the key once on each device you use. If a device doesn't have it yet, settings say so and that device uses `DEMO_KEY` until you do.
+- **In the text field (older versions):** saved in plain text in `.obsidian/plugins/cal-track/data.json`, which syncs with your vault. If you publish your vault or keep it in a public Git repo, leave that file out. A leaked key can't access anything of yours, but others could use up its hourly limit.
+
+If you saved a key before updating to 1.11.4, settings offer **Move your key to the keychain**, which moves it and removes it from `data.json`.
 
 ### My foods
 
@@ -73,26 +123,49 @@ Ways foods get there:
 - **Save as portion…** in the quantity picker: name the current amount ("my bowl") and it becomes a unit for that food. This works on online foods too, and saves them to My foods.
 - **Save to My foods** in the quantity picker: keeps an online food, so it's found instantly and works offline.
 - **Open My foods** command: edit the note directly. Changes apply on the next search.
+- **+ Combo** in the search box, or the **New combo** command: several foods saved as one (see below).
 
-### Your own tables
+### Combos
 
-Columns are found by their header names, so you can reorder them, drop the macro columns, or add your own (e.g. `Notes`). Cal Track leaves extra columns alone. Recognized headers: `Food`/`Item`, `Qty`/`Amount`, `Unit`, `kcal`/`Calories`, `Protein`, `Carbs`, `Fat`. A table only needs `Food` and `kcal`. Rows whose first cell is `Total`, `Goal` or `Remaining` count as summary rows.
+A combo is several foods saved as one entry in My foods, so something you eat often takes one step to log. It could be your usual breakfast (oats, a banana, a cup of milk) or a recipe (a pot of chili that makes 6 servings).
+
+1. Tap **+ Combo** in the search box, or run **New combo**.
+2. Name it, and add each food with its amount the usual way (search, then quantity and unit).
+3. Set **Servings** to how many servings it makes: 1 for a single meal, more for a recipe.
+4. **Save.** If you started from the search box, the quantity picker opens next so you can log it right away.
+
+It's logged as a single row, `1 serving` by default. A combo that makes several servings also has a `batch` unit for the whole thing. If every food in it has a known weight, you can log it in grams too. In search results it's marked **Combo**.
+
+To change one, pick it and choose **Edit combo…** in the quantity picker. Foods you've already logged keep the numbers they were logged with.
+
+In `Foods.md` a combo is an ordinary row with its totals per serving, plus an **Ingredients** column:
+
+```markdown
+| Food | Per | kcal | Protein | Carbs | Fat | Portions | Ingredients |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| Usual breakfast | 1 serving = 402 g | 377 | 14.3 | 66 | 2.9 | | Oats (40 g); Bananas, raw (1 medium); Milk (1 cup) |
+```
+
+The row's numbers are what gets logged. The ingredient list is only used when you edit the combo, so if you change it by hand, the numbers won't update. A food in the list that Cal Track can no longer find (e.g. after **Clear recent foods**) shows as "not found" in the editor, and you can look it up again there. An existing `Foods.md` gets the Ingredients column when you save your first combo.
 
 ---
 
 ## Settings
 
-- **USDA / Open Food Facts**: turn each source on or off; USDA API key
-- **Macro columns**: include Protein / Carbs / Fat in new logs
-- **Daily calorie goal**: adds Goal and Remaining rows to new logs
+- **Daily notes**: shows where today's note is, or that daily notes aren't set up
+- **Food log file**: where the CSV lives (`Cal Track/log.csv` by default)
+- **USDA / Open Food Facts**: turn each source on or off; USDA API key (in Obsidian's keychain on 1.11.4+)
 - **My foods note**: where your food database lives
+- **Macro columns**: show Protein / Carbs / Fat in daily logs
+- **Daily calorie goal**: adds Goal and Remaining rows
+- **Meals**: the meal labels to choose from, comma-separated, in display order. Blank turns meals off.
 - **Clear recent foods**: forgets cached lookups (My foods is untouched)
 
 ---
 
 ## Installation (manual)
 
-1. Install and enable **Table Calc**.
+1. Turn on daily notes: the **Periodic Notes** plugin, or Obsidian's core **Daily notes** plugin.
 2. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/BenRuns/Obsidian-cal-track/releases/latest).
 3. Copy them into `<vault>/.obsidian/plugins/cal-track/`.
 4. **Settings → Community plugins** → reload → enable **Cal Track**.
@@ -102,7 +175,7 @@ Columns are found by their header names, so you can reorder them, drop the macro
 ```bash
 npm install
 npm run build   # → main.js
-npm test        # units, parsers, table editing
+npm test        # units, parsers, CSV log, daily notes
 npm run lint
 ```
 

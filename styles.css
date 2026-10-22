@@ -132,3 +132,135 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Combo editor */
+
+.cal-track-combo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0;
+}
+
+.cal-track-combo-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.cal-track-combo-item .cal-track-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* No product for a barcode */
+
+.cal-track-miss {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  margin: 4px 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.cal-track-miss-title {
+  font-weight: 600;
+}
+
+.cal-track-miss-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+}
+
+.cal-track-miss button {
+  margin-top: 6px;
+}
+
+/* ─── Daily log (cal-track block) ─────────────────────────────── */
+
+.cal-track-log table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 8px;
+}
+
+.cal-track-log th,
+.cal-track-log td {
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.cal-track-log .cal-track-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-track-log tfoot tr:first-child th,
+.cal-track-log tfoot tr:first-child td {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.cal-track-log tfoot th {
+  font-weight: 600;
+}
+
+.cal-track-log .cal-track-meal-row th,
+.cal-track-log .cal-track-meal-row td {
+  padding-top: 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.cal-track-actions {
+  white-space: nowrap;
+  text-align: right;
+  width: 1%;
+}
+
+.cal-track-icon {
+  padding: 2px 4px;
+  opacity: 0.5;
+}
+
+.cal-track-log tr:hover .cal-track-icon,
+.cal-track-icon:focus-visible {
+  opacity: 1;
+}
+
+/* No hover on touch screens: keep the buttons visible. */
+@media (hover: none) {
+  .cal-track-icon {
+    opacity: 1;
+  }
+}
+
+.cal-track-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.cal-track-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-direction: row-reverse;
+}
+
+.cal-track-add-icon {
+  display: inline-flex;
+}
+
+.cal-track-add-icon svg {
+  width: var(--icon-s);
+  height: var(--icon-s);
+}
