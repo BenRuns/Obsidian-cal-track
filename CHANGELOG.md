@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Pass Obsidian's release review: the keychain APIs (Obsidian 1.11.4+) are now guarded with `requireApiVersion`. No change in behavior.
+
 ## 0.1.0
 
 First release.
