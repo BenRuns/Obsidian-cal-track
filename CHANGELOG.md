@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- **Search on phones:** the Look up food search box keeps a usable width; the buttons move to a second line when they don't fit.
+- Clears the last warnings from Obsidian's plugin review. No other change in behavior.
+
 ## 0.1.2
 
 - **Settings search:** on Obsidian 1.13+, Cal Track's settings show up in Obsidian's settings search. Older versions keep the same settings screen as before.
