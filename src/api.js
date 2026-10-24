@@ -23,7 +23,14 @@ const OFF_FIELDS = 'code,product_name,brands,nutriments,serving_size,serving_qua
 
 import manifest from '../manifest.json' with { type: 'json' };
 
-const { version } = manifest;
+// Read through `unknown`: some TypeScript setups (Obsidian's review among
+// them) don't type JSON imports.
+/** @param {unknown} m */
+const versionOf = (m) =>
+  typeof m === 'object' && m !== null && 'version' in m && typeof m.version === 'string'
+    ? m.version
+    : '';
+const version = versionOf(manifest);
 
 // Open Food Facts asks every app to identify itself as
 // "AppName/Version (ContactEmail)", so they can reach the maintainer
