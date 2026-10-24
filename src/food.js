@@ -14,14 +14,34 @@ import { isMassUnit, isVolumeUnit, MASS_UNITS, normalizeUnit, VOLUME_UNITS } fro
 //             entered per serving with no weight)
 // }
 
+/** @typedef {import('./types').Food} Food */
+/** @typedef {import('./types').Macro} Macro */
+/** @typedef {import('./types').Nutrients} Nutrients */
+/** @typedef {import('./types').Portion} Portion */
+/** @typedef {import('./types').UsdaFoodJson} UsdaFoodJson */
+/** @typedef {import('./types').UsdaNutrient} UsdaNutrient */
+/** @typedef {import('./types').UsdaSearchJson} UsdaSearchJson */
+/** @typedef {import('./types').OffProductJson} OffProductJson */
+/** @typedef {import('./types').OffSearchJson} OffSearchJson */
+/** @typedef {number | string | null | undefined} NumberLike */
+
+/** @type {Macro[]} */
 const MACROS = ['kcal', 'protein', 'carbs', 'fat'];
 
+/** @returns {Nutrients} */
+const noNutrients = () => ({ kcal: null, protein: null, carbs: null, fat: null });
+
+/**
+ * @param {unknown} v
+ * @returns {number | null}
+ */
 function num(v) {
   const n = typeof v === 'string' ? parseFloat(v) : v;
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
 // "1", "0.5", "1/2", "1 1/2" → number; returns { amount, rest }.
+/** @param {string | null | undefined} text */
 function splitLeadingAmount(text) {
   const s = String(text || '').trim();
   const m = s.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s*(.*)$/);
@@ -43,6 +63,7 @@ function splitLeadingAmount(text) {
 // Shortens a portion description to a unit name for the picker:
 // "cup, sliced" → "cup", "medium (7\" to 7-7/8\" long)" → "medium",
 // "tbsp" → "tbsp", "NLEA serving" → "nlea serving".
+/** @param {string | null | undefined} text */
 function portionUnit(text) {
   const head = String(text || '')
     .split(/[,(]/)[0]
@@ -57,6 +78,12 @@ function portionUnit(text) {
   return n;
 }
 
+/**
+ * @param {string | undefined} text
+ * @param {unknown} grams
+ * @param {number} [amountOverride]
+ * @returns {Portion | null}
+ */
 function makePortion(text, grams, amountOverride) {
   const g = num(grams);
   if (!g || g <= 0) return null;
@@ -68,20 +95,33 @@ function makePortion(text, grams, amountOverride) {
   return { unit, amount: amountOverride || amount, grams: g };
 }
 
+/**
+ * @param {(Portion | null)[]} portions
+ * @returns {Portion[]}
+ */
 function dedupePortions(portions) {
   const seen = new Set();
-  return portions.filter((p) => {
-    if (!p || seen.has(p.unit)) return false;
-    seen.add(p.unit);
-    return true;
-  });
+  return /** @type {Portion[]} */ (
+    portions.filter((p) => {
+      if (!p || seen.has(p.unit)) return false;
+      seen.add(p.unit);
+      return true;
+    })
+  );
 }
 
 // USDA branded descriptions come back ALL CAPS ("GREEK NONFAT YOGURT").
+/** @param {string | undefined} s */
 function tidyCase(s) {
   const str = String(s || '').trim();
   if (str && str === str.toUpperCase() && /[A-Z]/.test(str)) {
-    return str.toLowerCase().replace(/(^|[\s(/-])([a-z])/g, (_, a, b) => a + b.toUpperCase());
+    return str
+      .toLowerCase()
+      .replace(
+        /(^|[\s(/-])([a-z])/g,
+        (/** @type {string} */ _, /** @type {string} */ a, /** @type {string} */ b) =>
+          a + b.toUpperCase(),
+      );
   }
   return str;
 }
@@ -99,6 +139,10 @@ const USDA_NUTRIENTS = {
 
 // Search results use flat { nutrientId, nutrientNumber, unitName, value };
 // the /food/{id} endpoint nests { nutrient: { id, number, unitName }, amount }.
+/**
+ * @param {UsdaNutrient[] | undefined} foodNutrients
+ * @param {Macro} key
+ */
 function usdaNutrientValue(foodNutrients, key) {
   const spec = USDA_NUTRIENTS[key];
   const flat = (foodNutrients || []).map((n) => ({
@@ -119,10 +163,15 @@ function usdaNutrientValue(foodNutrients, key) {
   return null;
 }
 
+/**
+ * @param {UsdaFoodJson} f
+ * @returns {Food}
+ */
 function parseUsdaFood(f) {
-  const per100g = {};
+  const per100g = noNutrients();
   for (const k of MACROS) per100g[k] = usdaNutrientValue(f.foodNutrients, k);
 
+  /** @type {(Portion | null)[]} */
   const portions = [];
   let density;
 
@@ -154,6 +203,7 @@ function parseUsdaFood(f) {
     portions.push(makePortion(text, p.gramWeight));
   }
 
+  /** @type {Food} */
   const food = {
     id: `usda:${f.fdcId}`,
     source: 'usda',
@@ -166,23 +216,30 @@ function parseUsdaFood(f) {
   return food;
 }
 
+/** @param {UsdaSearchJson | null | undefined} json */
 function parseUsdaSearch(json) {
   return (json?.foods || []).map(parseUsdaFood).filter((f) => f.per100g.kcal !== null);
 }
 
 // ─── Open Food Facts ──────────────────────────────────────────────────────────
 
+/**
+ * @param {OffProductJson} p
+ * @returns {Food}
+ */
 function parseOffProduct(p) {
   const n = p.nutriments || {};
   let kcal = num(n['energy-kcal_100g']);
   // Some products only list kJ.
-  if (kcal === null && num(n.energy_100g) !== null) kcal = num(n.energy_100g) / 4.184;
+  const kj = num(n.energy_100g);
+  if (kcal === null && kj !== null) kcal = kj / 4.184;
   const per100g = {
     kcal,
     protein: num(n.proteins_100g),
     carbs: num(n.carbohydrates_100g),
     fat: num(n.fat_100g),
   };
+  /** @type {(Portion | null)[]} */
   const portions = [];
   const servingGrams = num(p.serving_quantity);
   if (servingGrams > 0) {
@@ -204,6 +261,7 @@ function parseOffProduct(p) {
   };
 }
 
+/** @param {OffSearchJson | null | undefined} json */
 function parseOffSearch(json) {
   return (json?.products || [])
     .map(parseOffProduct)
@@ -214,6 +272,11 @@ function parseOffSearch(json) {
 
 // A food the user typed in from a label: macros per one serving of
 // `servingAmount servingUnit` (e.g. 1 bar, 30 g, 2 tbsp).
+// Numbers may be strings, as typed into a form.
+/**
+ * @param {{ name: string, servingAmount?: NumberLike, servingUnit?: string, servingGrams?: NumberLike, kcal?: NumberLike, protein?: NumberLike, carbs?: NumberLike, fat?: NumberLike }} label
+ * @returns {Food}
+ */
 function makeCustomFood({
   name,
   servingAmount,
@@ -224,23 +287,26 @@ function makeCustomFood({
   carbs,
   fat,
 }) {
-  const amount = num(servingAmount) > 0 ? num(servingAmount) : 1;
+  const given = num(servingAmount);
+  const amount = given !== null && given > 0 ? given : 1;
   const unit = normalizeUnit(servingUnit) || 'serving';
   let grams = num(servingGrams);
   if (!(grams > 0) && isMassUnit(unit)) grams = amount * MASS_UNITS[unit];
   const noMass = !(grams > 0);
   // Without a weight, pretend a serving weighs 100 g and only offer the
   // serving unit — the per-100 g math then works out to per-serving.
-  const basis = noMass ? 100 : grams;
-  const per100g = {};
+  const basis = noMass || grams === null ? 100 : grams;
+  const per100g = noNutrients();
   const vals = { kcal, protein, carbs, fat };
   for (const k of MACROS) {
     const v = num(vals[k]);
     per100g[k] = v === null ? null : (v * 100) / basis;
   }
+  /** @type {Portion[]} */
   const portions = [];
   if (!isMassUnit(unit)) portions.push({ unit, amount, grams: basis });
   if (unit !== 'serving') portions.push({ unit: 'serving', amount: 1, grams: basis });
+  /** @type {Food} */
   const food = {
     id: `custom:${String(name).trim().toLowerCase()}`,
     source: 'custom',
@@ -259,12 +325,17 @@ function makeCustomFood({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** @param {Pick<Food, 'name' | 'brand'>} food */
 function displayName(food) {
   return food.brand ? `${food.name} (${food.brand})` : food.name;
 }
 
+/**
+ * @param {Food} food
+ * @param {number | null} grams
+ */
 function nutrientsFor(food, grams) {
-  const out = {};
+  const out = noNutrients();
   for (const k of MACROS) {
     const v = food.per100g?.[k];
     out[k] = v === null || v === undefined || grams === null ? null : (v * grams) / 100;

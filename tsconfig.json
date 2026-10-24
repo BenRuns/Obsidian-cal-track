@@ -5,11 +5,12 @@
     "checkJs": false,
     "noEmit": true,
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "esModuleInterop": false,
     "resolveJsonModule": true,
     "lib": ["ES2022", "DOM"],
     "skipLibCheck": true
   },
-  "include": ["src/**/*.js", "manifest.json"]
+  "include": ["src/**/*.js", "src/**/*.ts", "manifest.json"]
 }

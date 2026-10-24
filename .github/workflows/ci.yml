@@ -19,6 +19,21 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
-      - run: npm run lint:obsidian
       - run: npm run build
       - run: npm test
+
+  # The same rules Obsidian's release review runs (see eslint.config.mjs).
+  # Fails on any warning, so a PR can't add one.
+  obsidian-lint:
+    name: Obsidian lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint:obsidian

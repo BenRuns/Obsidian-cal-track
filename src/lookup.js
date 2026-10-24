@@ -1,5 +1,10 @@
 import { asBarcode, searchAll } from './api.js';
 
+/** @typedef {import('./types').HttpRequest} HttpRequest */
+/** @typedef {import('./types').SearchResult} SearchResult */
+/** @typedef {import('./types').SearchSettings} SearchSettings */
+/** @typedef {Record<string, number>} Cooldowns */
+
 // ─── Cached, backoff-aware search ─────────────────────────────────────────────
 //
 // Wraps searchAll with:
@@ -23,6 +28,10 @@ const SOURCES = ['USDA', 'Open Food Facts'];
 // cooldown just stops the plugin from making the shared problem worse.
 const RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
 
+/**
+ * @param {SearchSettings} settings
+ * @param {string} query
+ */
 function cacheKey(settings, query) {
   return [
     query.trim().toLowerCase(),
@@ -31,10 +40,16 @@ function cacheKey(settings, query) {
   ].join('|');
 }
 
+/** @param {number} ms */
 function minutesLeft(ms) {
   return Math.max(1, Math.ceil(ms / 60000));
 }
 
+/**
+ * @param {string} source
+ * @param {Cooldowns} cooldowns
+ * @param {number} now
+ */
 function cooldownMessage(source, cooldowns, now) {
   const mins = minutesLeft(cooldowns[source] - now);
   const hint =
@@ -42,11 +57,16 @@ function cooldownMessage(source, cooldowns, now) {
   return `${source}: rate limited, retrying in ${mins} min.${hint}`;
 }
 
+/**
+ * @param {{ request: HttpRequest, cache: import('./cache.js').TTLCache<SearchResult>, cooldowns: Cooldowns, settings: SearchSettings, query: string, now?: number }} options
+ * @returns {Promise<SearchResult>}
+ */
 async function cachedSearch({ request, cache, cooldowns, settings, query, now = Date.now() }) {
   const key = cacheKey(settings, query);
   const hit = cache.get(key, now);
   if (hit) return hit;
 
+  /** @param {string} source */
   const cooledDown = (source) => (cooldowns[source] || 0) > now;
   const effective = {
     ...settings,

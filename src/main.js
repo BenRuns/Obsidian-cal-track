@@ -14,7 +14,7 @@ import {
   setIcon,
   TFile,
 } from 'obsidian';
-import { asBarcode, getUsdaFood } from './api.js';
+import { asBarcode, errorCode, errorMessage, getUsdaFood } from './api.js';
 import { TTLCache } from './cache.js';
 import { makeCombo } from './combo.js';
 import {
@@ -45,8 +45,43 @@ import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from './lookup.js';
 import { formatNumber } from './table.js';
 import { normalizeUnit, toGrams, unitsFor } from './units.js';
 
+/** @typedef {import('obsidian').App} App */
+/** @typedef {import('./types').DailyConfig} DailyConfig */
+/** @typedef {import('./types').DailyNoteOptions} DailyNoteOptions */
+/** @typedef {import('./types').Food} Food */
+/** @typedef {import('./types').Ingredient} Ingredient */
+/** @typedef {import('./types').LogEntry} LogEntry */
+/** @typedef {import('./types').Macro} Macro */
+/** @typedef {import('./types').Nutrients} Nutrients */
+/** @typedef {import('./types').PeriodicNotesSettings} PeriodicNotesSettings */
+/** @typedef {import('./types').SearchResult} SearchResult */
+/** @typedef {import('./types').Settings} Settings */
+
+// What PortionModal hands back: the amount picked, and what it works out to.
+/** @typedef {{ qty: number, unit: string, meal: string, grams: number, nutrients: Nutrients, food: Food }} PortionChoice */
+
+/**
+ * PortionModal's options; qty and unit are the starting amount.
+ * @typedef {{ qty?: number | null, unit?: string, meal?: string, meals?: string[], submitText?: string, onSubmit: (choice: PortionChoice) => unknown, onChangeFood?: () => void }} PortionOptions
+ */
+
+// Parts of Obsidian outside its public API, read to find the daily-note settings.
+/**
+ * @typedef {{
+ *   internalPlugins?: { getPluginById?: (id: string) => { enabled?: boolean, instance?: { options?: DailyNoteOptions } } | null },
+ *   plugins?: { getPlugin?: (id: string) => { settings?: PeriodicNotesSettings } | null },
+ * }} PrivateApp
+ */
+
+/**
+ * @param {App} app
+ * @returns {PrivateApp}
+ */
+const privateApp = (app) => /** @type {PrivateApp} */ (/** @type {unknown} */ (app));
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
+/** @type {Settings} */
 const DEFAULT_SETTINGS = {
   usdaApiKey: '', // plain-text key, for Obsidian without SecretStorage; blank → DEMO_KEY
   usdaKeySecret: '', // name of the secret holding the key in Obsidian's keychain (1.11.4+)
@@ -69,20 +104,274 @@ const USDA_SECRET = 'cal-track-usda-api-key';
 const MAX_RECENT = 30;
 const MAX_SAVED = 300;
 
+// One list of settings, rendered two ways: as declarative definitions on
+// Obsidian 1.13+ (getSettingDefinitions, which also puts them in Obsidian's
+// settings search), and row by row by display() on older versions. Each row's
+// render() adds its controls to the Setting it's given; changes are saved
+// with saveAll(), as data.json also holds the remembered foods.
+/**
+ * @typedef {{ name: string, desc?: string, visible?: () => boolean, render?: (setting: Setting) => void }} SettingRow
+ * @typedef {{ heading: string, rows: SettingRow[] }} SettingSection
+ */
+
+const SETTINGS_INTRO =
+  'Everything you eat is kept in one CSV file, a row per food. Each daily note shows ' +
+  "that day's foods and totals in a cal-track block, added for you the first time you log.";
+
 class CalTrackSettingTab extends PluginSettingTab {
+  /** @type {CalTrackPlugin} */
+  plugin;
+
+  /**
+   * @param {App} app
+   * @param {CalTrackPlugin} plugin
+   */
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
 
+  // Obsidian 1.13+ renders these, and skips display().
+  getSettingDefinitions() {
+    return [
+      { name: 'How it works', desc: SETTINGS_INTRO },
+      ...this.sections().map(({ heading, rows }) => ({
+        type: /** @type {const} */ ('group'),
+        heading,
+        items: rows.map(({ name, desc, visible, render }) => ({ name, desc, visible, render })),
+      })),
+    ];
+  }
+
+  // Older Obsidian: the same rows, built by hand.
+  display() {
+    this.renderRows();
+  }
+
+  renderRows() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl('p', { cls: 'setting-item-description', text: SETTINGS_INTRO });
+    for (const { heading, rows } of this.sections()) {
+      new Setting(containerEl).setName(heading).setHeading();
+      for (const row of rows) {
+        if (row.visible && !row.visible()) continue;
+        const setting = new Setting(containerEl).setName(row.name);
+        if (row.desc) setting.setDesc(row.desc);
+        row.render?.(setting);
+      }
+    }
+  }
+
+  // Rebuilds the tab after a change that shows, hides or rewords rows.
+  refresh() {
+    if (requireApiVersion('1.13.0')) this.update();
+    else this.renderRows();
+  }
+
+  /** @returns {SettingSection[]} */
+  sections() {
+    const s = this.plugin.settings;
+    const save = () => this.plugin.saveAll();
+    // Worked out again each time a row renders: Obsidian may build the
+    // definitions once, when the plugin loads.
+    const dailyNotesDesc = () => {
+      const config = this.plugin.dailyConfig();
+      return config
+        ? `Today's note: ${notePath(config, moment())}. Folder, date format and template come ` +
+            'from your Periodic Notes or Daily notes settings.'
+        : "Not set up. Turn on daily notes in the Periodic Notes plugin or Obsidian's core daily notes plugin. Cal Track logs into daily notes.";
+    };
+    const recentDesc = () =>
+      `${Object.keys(this.plugin.foods).length} looked-up foods are remembered so they can be ` +
+      're-added and adjusted without a network lookup. My foods are not affected.';
+    return [
+      {
+        heading: 'Food log',
+        rows: [
+          {
+            name: 'Daily notes',
+            desc: dailyNotesDesc(),
+            render: (setting) => setting.setDesc(dailyNotesDesc()),
+          },
+          {
+            name: 'Food log file',
+            desc: 'A CSV file you can also open in a spreadsheet. Columns: id, date, time, food, qty, unit, kcal, protein, carbs, fat.',
+            render: (setting) =>
+              setting.addText((t) =>
+                t
+                  .setPlaceholder(DEFAULT_SETTINGS.logFile)
+                  .setValue(s.logFile)
+                  .onChange(async (v) => {
+                    s.logFile = v.trim() || DEFAULT_SETTINGS.logFile;
+                    await save();
+                    this.plugin.logChanged();
+                  }),
+              ),
+          },
+        ],
+      },
+      {
+        heading: 'Food databases',
+        rows: [
+          {
+            name: 'USDA FoodData Central',
+            desc: 'Best for generic foods (banana, chicken breast) and many US brands.',
+            render: (setting) =>
+              setting.addToggle((t) =>
+                t.setValue(s.useUsda).onChange(async (v) => {
+                  s.useUsda = v;
+                  await save();
+                }),
+              ),
+          },
+          {
+            name: 'USDA API key',
+            desc: 'Optional. Without one the shared DEMO_KEY is used, which allows only about 10 lookups an hour.',
+            render: (setting) => this.usdaKeySetting(setting),
+          },
+          {
+            // A key saved before the keychain existed: move it, one click.
+            name: 'Move your key to the keychain',
+            desc:
+              "Your USDA key is saved in plain text in this vault's data.json. Moving it removes it " +
+              'from data.json, so other devices need it set in their own keychain.',
+            visible: () => this.plugin.hasKeychain() && Boolean(s.usdaApiKey) && !s.usdaKeySecret,
+            render: (setting) =>
+              setting.addButton((b) =>
+                b
+                  .setButtonText('Move')
+                  .setCta()
+                  .onClick(async () => {
+                    if (requireApiVersion('1.11.4')) {
+                      this.plugin.app.secretStorage.setSecret(USDA_SECRET, s.usdaApiKey);
+                      s.usdaKeySecret = USDA_SECRET;
+                      s.usdaApiKey = '';
+                      await save();
+                      this.refresh();
+                    }
+                  }),
+              ),
+          },
+          {
+            name: 'Open Food Facts',
+            desc: 'Crowd-sourced packaged foods from around the world. No key needed.',
+            render: (setting) =>
+              setting.addToggle((t) =>
+                t.setValue(s.useOff).onChange(async (v) => {
+                  s.useOff = v;
+                  await save();
+                }),
+              ),
+          },
+        ],
+      },
+      {
+        heading: 'My foods',
+        rows: [
+          {
+            name: 'My foods note',
+            desc:
+              'Custom foods and saved portions live in this note, searched before the online databases. ' +
+              'It is a normal table you can edit by hand.',
+            render: (setting) =>
+              setting
+                .addText((t) =>
+                  t
+                    .setPlaceholder(DEFAULT_SETTINGS.foodsFile)
+                    .setValue(s.foodsFile)
+                    .onChange(async (v) => {
+                      s.foodsFile = v.trim() || DEFAULT_SETTINGS.foodsFile;
+                      this.plugin.myFoods = null;
+                      await save();
+                    }),
+                )
+                .addButton((b) => b.setButtonText('Open').onClick(() => this.plugin.openMyFoods())),
+          },
+        ],
+      },
+      {
+        heading: 'Daily log',
+        rows: [
+          {
+            name: 'Macro columns',
+            desc: 'Show protein, carbs and fat columns.',
+            render: (setting) =>
+              setting.addToggle((t) =>
+                t.setValue(s.macros).onChange(async (v) => {
+                  s.macros = v;
+                  await save();
+                  this.plugin.logChanged();
+                }),
+              ),
+          },
+          {
+            name: 'Daily calorie goal',
+            desc: 'Adds goal and remaining rows. Leave at 0 for none.',
+            render: (setting) =>
+              setting.addText((t) => {
+                t.inputEl.type = 'number';
+                t.setValue(String(s.dailyGoal || 0)).onChange(async (v) => {
+                  const n = Number(v);
+                  s.dailyGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+                  await save();
+                  this.plugin.logChanged();
+                });
+              }),
+          },
+          {
+            name: 'Meals',
+            desc:
+              'Labels you can give each food, separated by commas, in the order the daily log shows them. ' +
+              'Leave blank to log without meals.',
+            render: (setting) =>
+              setting.addText((t) =>
+                t
+                  .setPlaceholder(DEFAULT_SETTINGS.meals)
+                  .setValue(s.meals)
+                  .onChange(async (v) => {
+                    s.meals = v;
+                    await save();
+                    this.plugin.logChanged();
+                  }),
+              ),
+          },
+        ],
+      },
+      {
+        heading: 'Recent foods',
+        rows: [
+          {
+            name: 'Clear recent foods',
+            desc: recentDesc(),
+            render: (setting) =>
+              setting.setDesc(recentDesc()).addButton((b) =>
+                b
+                  .setButtonText('Clear')
+                  .setWarning()
+                  .onClick(async () => {
+                    this.plugin.foods = {};
+                    this.plugin.recent = [];
+                    await save();
+                    this.refresh();
+                  }),
+              ),
+          },
+        ],
+      },
+    ];
+  }
+
   // In Obsidian's keychain when it has one (Settings → Keychain), so the key
   // isn't sitting in data.json; otherwise a plain text field as before.
-  usdaKeySetting(containerEl) {
+  /** @param {Setting} setting */
+  usdaKeySetting(setting) {
     const s = this.plugin.settings;
     const save = () => this.plugin.saveAll();
     // A DEMO_KEY cooldown doesn't apply to a newly-added personal key.
     const keyChanged = () => delete this.plugin.rateLimitCooldowns.USDA;
     // Description with a clickable signup link, plus any extra sentences.
+    /** @param {string[]} extra */
     const about = (...extra) =>
       createFragment((f) => {
         f.appendText(
@@ -92,7 +381,6 @@ class CalTrackSettingTab extends PluginSettingTab {
         f.appendText(' — it takes about a minute.');
         for (const text of extra) f.appendText(` ${text}`);
       });
-    const setting = new Setting(containerEl).setName('USDA API key');
 
     // requireApiVersion() must guard the keychain APIs directly, or Obsidian's
     // review flags them as newer than minAppVersion.
@@ -112,31 +400,9 @@ class CalTrackSettingTab extends PluginSettingTab {
             if (name) s.usdaApiKey = '';
             keyChanged();
             await save();
-            this.display();
+            this.refresh();
           }),
         );
-
-      // A key saved before the keychain existed: move it, one click.
-      if (s.usdaApiKey && !s.usdaKeySecret) {
-        new Setting(containerEl)
-          .setName('Move your key to the keychain')
-          .setDesc(
-            "Your USDA key is saved in plain text in this vault's data.json. Moving it removes it " +
-              'from data.json, so other devices need it set in their own keychain.',
-          )
-          .addButton((b) =>
-            b
-              .setButtonText('Move')
-              .setCta()
-              .onClick(async () => {
-                this.plugin.app.secretStorage.setSecret(USDA_SECRET, s.usdaApiKey);
-                s.usdaKeySecret = USDA_SECRET;
-                s.usdaApiKey = '';
-                await save();
-                this.display();
-              }),
-          );
-      }
       return;
     }
 
@@ -151,159 +417,14 @@ class CalTrackSettingTab extends PluginSettingTab {
         }),
     );
   }
-
-  display() {
-    const { containerEl } = this;
-    const s = this.plugin.settings;
-    const save = () => this.plugin.saveAll();
-    containerEl.empty();
-
-    containerEl.createEl('p', {
-      cls: 'setting-item-description',
-      text:
-        'Everything you eat is kept in one CSV file, a row per food. Each daily note shows ' +
-        "that day's foods and totals in a cal-track block, added for you the first time you log.",
-    });
-
-    new Setting(containerEl).setName('Food log').setHeading();
-
-    const config = this.plugin.dailyConfig();
-    new Setting(containerEl)
-      .setName('Daily notes')
-      .setDesc(
-        config
-          ? `Today's note: ${notePath(config, moment())}. Folder, date format and template come ` +
-              'from your Periodic Notes or Daily notes settings.'
-          : "Not set up. Turn on daily notes in the Periodic Notes plugin or Obsidian's core daily notes plugin. Cal Track logs into daily notes.",
-      );
-
-    new Setting(containerEl)
-      .setName('Food log file')
-      .setDesc(
-        'A CSV file you can also open in a spreadsheet. Columns: id, date, time, food, qty, unit, kcal, protein, carbs, fat.',
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_SETTINGS.logFile)
-          .setValue(s.logFile)
-          .onChange(async (v) => {
-            s.logFile = v.trim() || DEFAULT_SETTINGS.logFile;
-            await save();
-            this.plugin.logChanged();
-          }),
-      );
-
-    new Setting(containerEl).setName('Food databases').setHeading();
-
-    new Setting(containerEl)
-      .setName('USDA FoodData Central')
-      .setDesc('Best for generic foods (banana, chicken breast) and many US brands.')
-      .addToggle((t) =>
-        t.setValue(s.useUsda).onChange(async (v) => {
-          s.useUsda = v;
-          await save();
-        }),
-      );
-
-    this.usdaKeySetting(containerEl);
-
-    new Setting(containerEl)
-      .setName('Open Food Facts')
-      .setDesc('Crowd-sourced packaged foods from around the world. No key needed.')
-      .addToggle((t) =>
-        t.setValue(s.useOff).onChange(async (v) => {
-          s.useOff = v;
-          await save();
-        }),
-      );
-
-    new Setting(containerEl).setName('My foods').setHeading();
-
-    new Setting(containerEl)
-      .setName('My foods note')
-      .setDesc(
-        'Custom foods and saved portions live in this note, searched before the online databases. ' +
-          'It is a normal table you can edit by hand.',
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_SETTINGS.foodsFile)
-          .setValue(s.foodsFile)
-          .onChange(async (v) => {
-            s.foodsFile = v.trim() || DEFAULT_SETTINGS.foodsFile;
-            this.plugin.myFoods = null;
-            await save();
-          }),
-      )
-      .addButton((b) => b.setButtonText('Open').onClick(() => this.plugin.openMyFoods()));
-
-    new Setting(containerEl).setName('Daily log').setHeading();
-
-    new Setting(containerEl)
-      .setName('Macro columns')
-      .setDesc('Show protein, carbs and fat columns.')
-      .addToggle((t) =>
-        t.setValue(s.macros).onChange(async (v) => {
-          s.macros = v;
-          await save();
-          this.plugin.logChanged();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName('Daily calorie goal')
-      .setDesc('Adds goal and remaining rows. Leave at 0 for none.')
-      .addText((t) => {
-        t.inputEl.type = 'number';
-        t.setValue(String(s.dailyGoal || 0)).onChange(async (v) => {
-          const n = Number(v);
-          s.dailyGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
-          await save();
-          this.plugin.logChanged();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName('Meals')
-      .setDesc(
-        'Labels you can give each food, separated by commas, in the order the daily log shows them. ' +
-          'Leave blank to log without meals.',
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_SETTINGS.meals)
-          .setValue(s.meals)
-          .onChange(async (v) => {
-            s.meals = v;
-            await save();
-            this.plugin.logChanged();
-          }),
-      );
-
-    new Setting(containerEl).setName('Recent foods').setHeading();
-
-    new Setting(containerEl)
-      .setName('Clear recent foods')
-      .setDesc(
-        `${Object.keys(this.plugin.foods).length} looked-up foods are remembered so they can be ` +
-          're-added and adjusted without a network lookup. My foods are not affected.',
-      )
-      .addButton((b) =>
-        b
-          .setButtonText('Clear')
-          .setWarning()
-          .onClick(async () => {
-            this.plugin.foods = {};
-            this.plugin.recent = [];
-            await save();
-            this.display();
-          }),
-      );
-  }
 }
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
 
+/**
+ * @param {Nutrients} n
+ * @param {number | null} grams
+ */
 function summarize(n, grams) {
   const parts = [`${formatNumber(n.kcal, 0) || '?'} kcal`];
   if (n.protein !== null) parts.push(`P ${formatNumber(n.protein, 1)} g`);
@@ -314,9 +435,14 @@ function summarize(n, grams) {
     : `${parts.join(' · ')}  (≈ ${formatNumber(grams, 0)} g)`;
 }
 
+/** @type {Record<string, string>} */
 const SOURCE_LABELS = { usda: 'USDA', off: 'OFF', custom: 'Mine', local: 'Mine' };
 
 class FoodSearchModal extends Modal {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {{ query?: string, onChoose: (food: Food) => unknown, allowCombo?: boolean }} options
+   */
   constructor(plugin, { query = '', onChoose, allowCombo = true }) {
     super(plugin.app);
     this.plugin = plugin;
@@ -324,7 +450,10 @@ class FoodSearchModal extends Modal {
     this.onChoose = onChoose;
     this.allowCombo = allowCombo;
     this.searchSeq = 0;
-    this.timer = null;
+    /** @type {number | undefined} */
+    this.timer = undefined;
+    /** @type {Food[]} */
+    this.mine = [];
   }
 
   onOpen() {
@@ -362,7 +491,6 @@ class FoodSearchModal extends Modal {
     this.status = contentEl.createDiv({ cls: 'cal-track-status' });
     this.list = contentEl.createDiv({ cls: 'cal-track-results' });
 
-    this.mine = [];
     this.renderLocal();
     this.plugin.getMyFoods().then((foods) => {
       this.mine = foods;
@@ -407,6 +535,7 @@ class FoodSearchModal extends Modal {
     this.list.empty();
     const q = this.input.value.trim().toLowerCase();
     const words = q.split(/\s+/).filter(Boolean);
+    /** @param {Food} f */
     const match = (f) => words.every((w) => displayName(f).toLowerCase().includes(w));
     const mine = this.mine.filter(match);
     const mineKeys = new Set(this.mine.map((f) => displayName(f).toLowerCase()));
@@ -458,6 +587,10 @@ class FoodSearchModal extends Modal {
 
   // A barcode with no product: say plainly what was checked, what couldn't
   // be (and why), and offer to enter the food from its label.
+  /**
+   * @param {string} barcode
+   * @param {string[]} errors
+   */
   renderBarcodeMiss(barcode, errors) {
     const { useUsda, useOff } = this.plugin.settings;
     const enabled = [useUsda && 'USDA', useOff && 'Open Food Facts'].filter(Boolean);
@@ -493,6 +626,7 @@ class FoodSearchModal extends Modal {
     }).open();
   }
 
+  /** @param {Food} food */
   renderItem(food) {
     const item = this.list.createDiv({ cls: 'cal-track-item' });
     const main = item.createDiv({ cls: 'cal-track-item-main' });
@@ -508,6 +642,7 @@ class FoodSearchModal extends Modal {
     item.addEventListener('click', () => this.choose(food));
   }
 
+  /** @param {Food} food */
   async choose(food) {
     // Search hits without household portions only offer g/oz; the full record
     // usually has "1 medium", "1 cup", etc. getFullPortions() is a no-op for
@@ -526,6 +661,11 @@ class FoodSearchModal extends Modal {
 }
 
 class PortionModal extends Modal {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {Food} food
+   * @param {PortionOptions} opts
+   */
   constructor(plugin, food, opts) {
     const {
       qty = 1,
@@ -540,6 +680,7 @@ class PortionModal extends Modal {
     this.plugin = plugin;
     this.opts = opts;
     this.food = food;
+    /** @type {number | string | null} as typed */
     this.qty = qty;
     // Match the setting's spelling ("breakfast" typed by hand → "Breakfast"), and
     // keep a meal that's no longer in the setting so editing a food doesn't drop it.
@@ -616,6 +757,7 @@ class PortionModal extends Modal {
 
   // "Save as portion…" stores the current amount under a name ("my bowl")
   // on this food in My foods; "Save to My foods" keeps an online food there.
+  /** @param {HTMLElement} contentEl */
   renderSaveRow(contentEl) {
     const wrap = contentEl.createDiv({ cls: 'cal-track-save' });
     const links = wrap.createDiv({ cls: 'cal-track-save-links' });
@@ -681,6 +823,7 @@ class PortionModal extends Modal {
   }
 
   // Switch to the My foods copy so later saves update that row.
+  /** @param {Food | null} saved */
   async adoptSaved(saved) {
     if (saved) this.food = saved;
     this.units = unitsFor(this.food);
@@ -725,10 +868,17 @@ class PortionModal extends Modal {
   }
 }
 
+/** @typedef {'name' | 'servingAmount' | 'servingUnit' | 'servingGrams' | Macro} LabelField */
+
 class CustomFoodModal extends Modal {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {{ name?: string, onSave: (food: Food) => unknown }} options
+   */
   constructor(plugin, { name = '', onSave }) {
     super(plugin.app);
     this.plugin = plugin;
+    /** @type {Partial<Record<LabelField, string>>} the form, as typed */
     this.values = { name, servingAmount: '1', servingUnit: 'serving', servingGrams: '' };
     this.onSave = onSave;
   }
@@ -741,6 +891,11 @@ class CustomFoodModal extends Modal {
       text: 'Copy the numbers from the nutrition label. Saved to my foods for next time.',
     });
 
+    /**
+     * @param {string} name
+     * @param {LabelField} key
+     * @param {{ desc?: string, placeholder?: string, number?: boolean }} [opts]
+     */
     const field = (name, key, opts = {}) =>
       new Setting(contentEl)
         .setName(name)
@@ -798,7 +953,20 @@ class CustomFoodModal extends Modal {
 
 // Several foods saved as one My foods entry: your usual breakfast, or a recipe
 // that makes several servings. Logged as a single row (see combo.js).
+/** @typedef {{ food: Food, qty: number, unit: string, grams: number, nutrients: Nutrients }} FoundItem */
+/** @typedef {FoundItem | { missing: Ingredient }} ComboItem */
+
+/**
+ * @param {ComboItem} it
+ * @returns {it is FoundItem}
+ */
+const isFound = (it) => !('missing' in it);
+
 class ComboModal extends Modal {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {{ combo?: Food | null, onSave?: (food: Food) => unknown }} options
+   */
   constructor(plugin, { combo = null, onSave }) {
     super(plugin.app);
     this.plugin = plugin;
@@ -807,6 +975,7 @@ class ComboModal extends Modal {
     this.servings = combo?.servings ?? 1;
     // { food, qty, unit, grams, nutrients }, or { missing: { name, qty, unit } }
     // for an ingredient that can't be found any more.
+    /** @type {ComboItem[]} */
     this.items = [];
     this.onSave = onSave;
   }
@@ -861,6 +1030,13 @@ class ComboModal extends Modal {
     this.contentEl.empty();
   }
 
+  /**
+   * @param {Food} food
+   * @param {number} qty
+   * @param {string} unit
+   * @param {number} grams
+   * @returns {ComboItem}
+   */
   item(food, qty, unit, grams) {
     return { food, qty, unit, grams, nutrients: nutrientsFor(food, grams) };
   }
@@ -874,6 +1050,10 @@ class ComboModal extends Modal {
   }
 
   // Add a food (index undefined), or replace the one at index.
+  /**
+   * @param {number} [index]
+   * @param {string} [query]
+   */
   pick(index, query) {
     this.plugin.pickFood({
       query,
@@ -882,6 +1062,11 @@ class ComboModal extends Modal {
     });
   }
 
+  /**
+   * @param {Food} food
+   * @param {number} [index]
+   * @param {{ qty: number, unit: string }} [current]
+   */
   askAmount(food, index, current) {
     this.plugin.askPortion(food, {
       qty: current?.qty,
@@ -904,7 +1089,7 @@ class ComboModal extends Modal {
     this.items.forEach((it, i) => {
       const row = this.listEl.createDiv({ cls: 'cal-track-combo-item' });
       const main = row.createDiv({ cls: 'cal-track-item-main' });
-      if (it.missing) {
+      if (!isFound(it)) {
         main.createSpan({ text: it.missing.name });
         main.createSpan({
           cls: 'cal-track-miss-error',
@@ -928,7 +1113,7 @@ class ComboModal extends Modal {
   }
 
   combo() {
-    const found = this.items.filter((it) => !it.missing);
+    const found = this.items.filter(isFound);
     return makeCombo({
       name: this.name.trim() || 'Combo',
       items: found.map((it) => ({ ...it, name: displayName(it.food) })),
@@ -953,7 +1138,7 @@ class ComboModal extends Modal {
       new Notice('Give the combo a name.');
       return;
     }
-    if (this.items.some((it) => it.missing)) {
+    if (!this.items.every(isFound)) {
       new Notice("Look up or remove the foods that weren't found first.");
       return;
     }
@@ -981,8 +1166,15 @@ class ComboModal extends Modal {
 
 // ─── Daily log block ──────────────────────────────────────────────────────────
 
+/** @type {Record<Macro, string>} */
 const LABELS = { kcal: 'kcal', protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
 
+/**
+ * @param {HTMLElement} parent
+ * @param {string} icon
+ * @param {string} label
+ * @param {() => unknown} onClick
+ */
 function iconButton(parent, icon, label, onClick) {
   const b = parent.createEl('button', {
     cls: 'clickable-icon cal-track-icon',
@@ -1000,6 +1192,11 @@ function iconButton(parent, icon, label, onClick) {
 // A ```cal-track``` block in a daily note: that day's rows from the food log,
 // with totals, re-rendered whenever the log changes.
 class DailyLogView extends MarkdownRenderChild {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {HTMLElement} el
+   * @param {string} date
+   */
   constructor(plugin, el, date) {
     super(el);
     this.plugin = plugin;
@@ -1021,6 +1218,7 @@ class DailyLogView extends MarkdownRenderChild {
     const entries = entriesFor(await this.plugin.getLog(), this.date);
     if (seq !== this.seq) return; // a newer render started while this one read the log
     const { macros, dailyGoal } = this.plugin.settings;
+    /** @type {Macro[]} */
     const keys = macros ? ['kcal', 'protein', 'carbs', 'fat'] : ['kcal'];
     const el = this.containerEl;
     el.empty();
@@ -1053,6 +1251,10 @@ class DailyLogView extends MarkdownRenderChild {
 
     const foot = table.createEl('tfoot');
     const sum = totals(entries);
+    /**
+     * @param {string} label
+     * @param {Partial<Record<Macro, string>>} values
+     */
     const summary = (label, values) => {
       const tr = foot.createEl('tr');
       tr.createEl('th', { text: label });
@@ -1074,6 +1276,12 @@ class DailyLogView extends MarkdownRenderChild {
     add.addEventListener('click', () => this.plugin.addFood(this.date));
   }
 
+  /**
+   * @param {HTMLElement} body
+   * @param {{ meal: string, entries: LogEntry[] }} group
+   * @param {Macro[]} keys
+   * @param {string[]} meals
+   */
   renderMealRow(body, { meal, entries }, keys, meals) {
     const tr = body.createEl('tr', { cls: 'cal-track-meal-row' });
     tr.createEl('th', { text: meal || 'No meal', attr: { colspan: 2 } });
@@ -1085,6 +1293,11 @@ class DailyLogView extends MarkdownRenderChild {
       iconButton(actions, 'plus', `Add to ${meal}`, () => this.plugin.addFood(this.date, meal));
   }
 
+  /**
+   * @param {HTMLElement} body
+   * @param {LogEntry} e
+   * @param {Macro[]} keys
+   */
   renderEntry(body, e, keys) {
     const tr = body.createEl('tr');
     tr.createEl('td', { text: e.food });
@@ -1097,6 +1310,10 @@ class DailyLogView extends MarkdownRenderChild {
   }
 }
 
+/**
+ * @param {HTMLElement} el
+ * @param {string} text
+ */
 function blockMessage(el, text) {
   el.createDiv({ cls: 'cal-track-log cal-track-empty', text });
 }
@@ -1104,14 +1321,31 @@ function blockMessage(el, text) {
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
 class CalTrackPlugin extends Plugin {
+  /** @type {Settings} */
+  settings = { ...DEFAULT_SETTINGS };
+  // Looked-up foods by lowercased display name, and the most recent keys.
+  /** @type {Record<string, Food>} */
+  foods = {};
+  /** @type {string[]} */
+  recent = [];
+  // Parsed My foods note and food log; null until read, or after a change.
+  /** @type {Food[] | null} */
+  myFoods = null;
+  /** @type {LogEntry[] | null} */
+  log = null;
+  // In-memory only — cleared on reload. They only ever save a network
+  // call, never hold data of their own, so nothing is lost by that.
+  /** @type {TTLCache<SearchResult>} */
+  searchCache = new TTLCache({ ttlMs: 10 * 60 * 1000, maxEntries: 60 });
+  /** @type {TTLCache<import('./types').Portion[]>} */
+  portionCache = new TTLCache({ ttlMs: 60 * 60 * 1000, maxEntries: 60 });
+  /** @type {Record<string, number>} */
+  rateLimitCooldowns = {};
+  /** @type {Set<DailyLogView>} */
+  views = new Set();
+
   async onload() {
     await this.loadAll();
-    // In-memory only — cleared on reload. They only ever save a network
-    // call, never hold data of their own, so nothing is lost by that.
-    this.searchCache = new TTLCache({ ttlMs: 10 * 60 * 1000, maxEntries: 60 });
-    this.portionCache = new TTLCache({ ttlMs: 60 * 60 * 1000, maxEntries: 60 });
-    this.rateLimitCooldowns = {};
-    this.views = new Set();
     this.addSettingTab(new CalTrackSettingTab(this.app, this));
 
     // From the command or ribbon, logging ends on today's note so you see it.
@@ -1172,6 +1406,10 @@ class CalTrackPlugin extends Plugin {
 
     // Hand edits to My foods take effect on the next search; changes to the
     // food log (hand edits, sync) show up in every open daily log right away.
+    /**
+     * @param {import('obsidian').TAbstractFile} file
+     * @param {string} [oldPath]
+     */
     const onChange = (file, oldPath) => {
       const paths = [file?.path, oldPath];
       if (paths.includes(this.foodsPath())) this.myFoods = null;
@@ -1186,10 +1424,15 @@ class CalTrackPlugin extends Plugin {
   // ── Persistence ──
 
   async loadAll() {
-    const data = (await this.loadData()) || {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
-    this.foods = data.foods || {};
-    this.recent = data.recent || [];
+    /** @type {unknown} */
+    const saved = await this.loadData();
+    const data =
+      /** @type {{ settings?: Partial<Settings>, foods?: Record<string, Food>, recent?: string[] } | null} */ (
+        saved
+      );
+    this.settings = { ...DEFAULT_SETTINGS, ...data?.settings };
+    this.foods = data?.foods || {};
+    this.recent = data?.recent || [];
   }
 
   async saveAll() {
@@ -1211,6 +1454,7 @@ class CalTrackPlugin extends Plugin {
     return this.settings.usdaApiKey || '';
   }
 
+  /** @param {string} query */
   async lookupFoods(query) {
     return cachedSearch({
       request: requestUrl,
@@ -1225,6 +1469,7 @@ class CalTrackPlugin extends Plugin {
   // one more request for the full record, which usually has them. Cached per
   // food id — it's the same answer every time, so there's no reason to pay
   // for that extra request twice.
+  /** @param {Food} food */
   async getFullPortions(food) {
     if (food.source !== 'usda' || food.portions.length) return food.portions;
     const cached = this.portionCache.get(food.id);
@@ -1235,7 +1480,7 @@ class CalTrackPlugin extends Plugin {
       this.portionCache.set(food.id, full.portions);
       return full.portions;
     } catch (e) {
-      if (e?.code === 'rate_limited')
+      if (errorCode(e) === 'rate_limited')
         this.rateLimitCooldowns.USDA = Date.now() + RATE_LIMIT_COOLDOWN_MS;
       return food.portions; // fall back to mass units only
     }
@@ -1243,6 +1488,7 @@ class CalTrackPlugin extends Plugin {
 
   // Foods are keyed by the name written into the table, so a row can be
   // matched back to its nutrition data when it's adjusted later.
+  /** @param {Food} food */
   async rememberFood(food) {
     const key = displayName(food).toLowerCase();
     this.foods[key] = food;
@@ -1274,6 +1520,10 @@ class CalTrackPlugin extends Plugin {
 
   // Writes the food into My foods (adding or replacing its row) and returns
   // the copy as read back from the note.
+  /**
+   * @param {Food} food
+   * @returns {Promise<Food>}
+   */
   async saveMyFood(food) {
     const path = this.foodsPath();
     let file = this.app.vault.getAbstractFileByPath(path);
@@ -1285,7 +1535,7 @@ class CalTrackPlugin extends Plugin {
         file = await this.app.vault.create(path, upsertFood('', food));
       }
     } catch (e) {
-      new Notice(`Couldn't save to ${path}: ${e.message}`);
+      new Notice(`Couldn't save to ${path}: ${errorMessage(e)}`);
       return food;
     }
     this.myFoods = null;
@@ -1296,6 +1546,7 @@ class CalTrackPlugin extends Plugin {
     return saved;
   }
 
+  /** @param {string} name */
   async removeMyFood(name) {
     const file = this.app.vault.getAbstractFileByPath(this.foodsPath());
     if (!(file instanceof TFile)) return;
@@ -1313,6 +1564,7 @@ class CalTrackPlugin extends Plugin {
     await this.app.workspace.getLeaf(true).openFile(file);
   }
 
+  /** @param {string} path */
   async ensureFolderFor(path) {
     const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
     if (folder && !this.app.vault.getAbstractFileByPath(folder))
@@ -1339,6 +1591,7 @@ class CalTrackPlugin extends Plugin {
 
   // Read-modify-write of the whole file in one step, so two quick edits can't
   // overwrite each other.
+  /** @param {(text: string) => string} change */
   async editLog(change) {
     const path = this.logPath();
     try {
@@ -1350,7 +1603,7 @@ class CalTrackPlugin extends Plugin {
         await this.app.vault.create(path, change(''));
       }
     } catch (e) {
-      new Notice(`Couldn't write ${path}: ${e.message}`);
+      new Notice(`Couldn't write ${path}: ${errorMessage(e)}`);
       return false;
     }
     this.logChanged();
@@ -1360,14 +1613,19 @@ class CalTrackPlugin extends Plugin {
   // ── Daily notes (Periodic Notes plugin, or core Daily notes) ──
 
   dailyConfig() {
-    const core = this.app.internalPlugins?.getPluginById?.('daily-notes');
+    const app = privateApp(this.app);
+    const core = app.internalPlugins?.getPluginById?.('daily-notes');
     return dailyConfig({
       // getPlugin only returns enabled plugins.
-      periodicNotes: this.app.plugins?.getPlugin?.('periodic-notes')?.settings ?? null,
+      periodicNotes: app.plugins?.getPlugin?.('periodic-notes')?.settings ?? null,
       coreDailyNotes: core?.enabled ? (core.instance?.options ?? {}) : null,
     });
   }
 
+  /**
+   * @param {DailyConfig} config
+   * @param {import('moment').Moment} date
+   */
   async dailyTemplate(config, date) {
     if (!config.template) return '';
     const file = this.app.metadataCache.getFirstLinkpathDest(normalizePath(config.template), '');
@@ -1381,6 +1639,10 @@ class CalTrackPlugin extends Plugin {
 
   // The daily note for a date, with a cal-track block in it: created from your
   // template if it doesn't exist, the block added if it's missing.
+  /**
+   * @param {string} dateKey
+   * @returns {Promise<TFile | null>}
+   */
   async ensureDailyNote(dateKey) {
     const config = this.dailyConfig();
     if (!config) return null;
@@ -1397,13 +1659,14 @@ class CalTrackPlugin extends Plugin {
     return this.app.vault.create(path, withLogBlock(text));
   }
 
+  /** @param {string} dateKey */
   async openDailyNote(dateKey) {
     if (!this.requireDailyNotes()) return;
     try {
       const file = await this.ensureDailyNote(dateKey);
       if (file) await this.app.workspace.getLeaf(false).openFile(file);
     } catch (e) {
-      new Notice(`Couldn't open the daily note: ${e.message}`);
+      new Notice(`Couldn't open the daily note: ${errorMessage(e)}`);
     }
   }
 
@@ -1417,6 +1680,10 @@ class CalTrackPlugin extends Plugin {
   }
 
   // My foods win over the recent-lookups cache.
+  /**
+   * @param {string} name
+   * @returns {Promise<Food | null>}
+   */
   async findFood(name) {
     const key = name.toLowerCase();
     const mine = (await this.getMyFoods()).find((f) => displayName(f).toLowerCase() === key);
@@ -1431,10 +1698,15 @@ class CalTrackPlugin extends Plugin {
     return [...recent, ...rest];
   }
 
+  /**
+   * @param {Food} food
+   * @param {Pick<PortionChoice, 'qty' | 'unit' | 'nutrients'>} portion
+   */
   rowValues(food, { qty, unit, nutrients }) {
     return { food: displayName(food), qty, unit, ...nutrients };
   }
 
+  /** @param {{ query?: string, onFood: (food: Food) => unknown, allowCombo?: boolean }} options */
   pickFood({ query, onFood, allowCombo }) {
     new FoodSearchModal(this, {
       query,
@@ -1446,6 +1718,10 @@ class CalTrackPlugin extends Plugin {
     }).open();
   }
 
+  /**
+   * @param {Food} food
+   * @param {PortionOptions} opts
+   */
   askPortion(food, opts) {
     const unit = opts.unit || (food.portions[0]?.unit ?? 'g');
     const qty = opts.qty ?? (normalizeUnit(unit) === 'g' ? 100 : 1);
@@ -1461,6 +1737,11 @@ class CalTrackPlugin extends Plugin {
   // meal: preselected in the picker. Without one, today's foods get a guess
   // from the time of day; other days start with no meal.
   // open: show the day's note afterwards (unless it's already the open note).
+  /**
+   * @param {string} dateKey
+   * @param {string} [meal]
+   * @param {{ open?: boolean }} [options]
+   */
   addFood(dateKey, meal, { open = false } = {}) {
     if (!this.requireDailyNotes()) return;
     const meals = this.mealList();
@@ -1476,7 +1757,14 @@ class CalTrackPlugin extends Plugin {
     });
   }
 
+  /**
+   * @param {string} dateKey
+   * @param {Food} food
+   * @param {PortionChoice} portion
+   * @param {{ open?: boolean }} [options]
+   */
   async logFood(dateKey, food, portion, { open = false } = {}) {
+    /** @type {LogEntry} */
     const entry = {
       id: newId(),
       date: dateKey,
@@ -1491,11 +1779,16 @@ class CalTrackPlugin extends Plugin {
       if (open && file && this.app.workspace.getActiveFile() !== file)
         await this.app.workspace.getLeaf(false).openFile(file);
     } catch (e) {
-      new Notice(`Logged ${entry.food}, but couldn't create the daily note: ${e.message}`);
+      new Notice(`Logged ${entry.food}, but couldn't create the daily note: ${errorMessage(e)}`);
     }
   }
 
+  /** @param {LogEntry} entry */
   async adjustEntry(entry) {
+    /**
+     * @param {Food} food
+     * @param {PortionChoice} portion
+     */
     const replace = (food, portion) =>
       this.editLog((text) =>
         updateEntry(text, entry.id, { ...this.rowValues(food, portion), meal: portion.meal || '' }),
@@ -1522,6 +1815,7 @@ class CalTrackPlugin extends Plugin {
     this.askPortion(food, { ...opts, onSubmit: (p) => replace(food, p), onChangeFood: search });
   }
 
+  /** @param {LogEntry} entry */
   async removeLogEntry(entry) {
     if (await this.editLog((text) => removeEntry(text, entry.id)))
       new Notice(`Removed ${entry.food}`);

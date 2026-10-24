@@ -3,6 +3,11 @@ import { makeCustomFood, splitLeadingAmount } from './food.js';
 import { escapeCell, findTables, formatNumber, joinRow, splitRow, unescapeCell } from './table.js';
 import { isMassUnit, isVolumeUnit, MASS_UNITS, normalizeUnit, toGrams } from './units.js';
 
+/** @typedef {import('./types').Food} Food */
+/** @typedef {import('./types').Per} Per */
+/** @typedef {import('./types').Portion} Portion */
+/** @typedef {'food' | 'per' | 'kcal' | 'protein' | 'carbs' | 'fat' | 'portions' | 'ingredients'} Column */
+
 // ─── My foods file ────────────────────────────────────────────────────────────
 //
 // The local food database is an ordinary note in the vault, so it's visible,
@@ -30,12 +35,14 @@ const FILE_INTRO = [
 ];
 const COLUMNS = ['Food', 'Per', 'kcal', 'Protein', 'Carbs', 'Fat', 'Portions', 'Ingredients'];
 
+/** @param {string | null | undefined} s */
 function num(s) {
   const n = parseFloat(String(s ?? '').replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 }
 
 // "60 g" / "2 oz" → grams, else null.
+/** @param {string} text */
 function parseMass(text) {
   const { amount, rest } = splitLeadingAmount(text);
   const unit = normalizeUnit(rest);
@@ -43,6 +50,10 @@ function parseMass(text) {
 }
 
 // "1 bar = 60 g" → { amount: 1, unit: 'bar', grams: 60 }
+/**
+ * @param {string | null | undefined} text
+ * @returns {Per}
+ */
 function parsePer(text) {
   const [left, right] = String(text || '').split('=');
   if (!left.trim()) return { amount: 100, unit: 'g', grams: 100 };
@@ -51,10 +62,12 @@ function parsePer(text) {
   return { amount, unit, grams: right ? parseMass(right) : null };
 }
 
+/** @param {Per} per */
 function isPer100g(per) {
   return per.unit === 'g' && per.amount === 100;
 }
 
+/** @param {(column: Column) => string} get */
 function foodFromCells(get) {
   const name = unescapeCell(get('food')).trim();
   const kcal = num(get('kcal'));
@@ -97,13 +110,22 @@ function foodFromCells(get) {
   return food;
 }
 
+/**
+ * @param {string | null | undefined} text
+ * @returns {Food[]}
+ */
 function parseFoodFile(text) {
   const lines = String(text || '').split('\n');
+  /** @type {Food[]} */
   const foods = [];
   for (const t of findTables(lines)) {
     for (let i = t.start + 2; i <= t.end; i++) {
       const cells = splitRow(lines[i]);
-      const get = (k) => (t.cols[k] === undefined ? '' : (cells[t.cols[k]] ?? ''));
+      /** @param {Column} k */
+      const get = (k) => {
+        const at = t.cols[k];
+        return at === undefined ? '' : (cells[at] ?? '');
+      };
       const food = foodFromCells(get);
       if (food) foods.push(food);
     }
@@ -113,11 +135,16 @@ function parseFoodFile(text) {
 
 // ─── Writing ──────────────────────────────────────────────────────────────────
 
+/**
+ * @param {Food} food
+ * @returns {Per}
+ */
 function perOf(food) {
   if (food.per) return food.per;
   return { amount: 100, unit: 'g', grams: 100 };
 }
 
+/** @param {Per} per */
 function perText(per) {
   const amt = formatNumber(per.amount, 3);
   if (isMassUnit(per.unit)) return `${amt} ${per.unit}`;
@@ -127,6 +154,10 @@ function perText(per) {
 }
 
 // Cell text for each column key.
+/**
+ * @param {Food} food
+ * @returns {Record<Column, string>}
+ */
 function foodCells(food) {
   const per = perOf(food);
   // Grams the row's numbers are for. Weightless foods use the 100 g stand-in
@@ -136,11 +167,16 @@ function foodCells(food) {
     : per.grams > 0
       ? per.grams
       : toGrams(food, per.amount, per.unit) || 100;
+  /**
+   * @param {import('./types').Macro} k
+   * @param {number} d
+   */
   const scaled = (k, d) => {
     const v = food.per100g?.[k];
     return v === null || v === undefined ? '' : formatNumber((v * basis) / 100, d);
   };
 
+  /** @type {string[]} */
   const portions = [];
   for (const p of food.portions || []) {
     const perUnit = p.grams / (p.amount || 1);
@@ -184,6 +220,10 @@ function newFileLines() {
 
 // Adds the food to the file, or replaces the row with the same name.
 // Returns the new file text.
+/**
+ * @param {string} text
+ * @param {Food} food
+ */
 function upsertFood(text, food) {
   let lines = text?.trim() ? text.replace(/\n+$/, '').split('\n') : [];
   let table = findTables(lines)[0];
@@ -216,7 +256,8 @@ function upsertFood(text, food) {
   const cells = at >= 0 ? splitRow(lines[at]) : [];
   while (cells.length < table.width) cells.push('');
   for (const [k, v] of Object.entries(values)) {
-    if (table.cols[k] !== undefined) cells[table.cols[k]] = v;
+    const col = table.cols[/** @type {Column} */ (k)];
+    if (col !== undefined) cells[col] = v;
   }
   const row = joinRow(cells);
   if (at >= 0) lines[at] = row;
@@ -225,6 +266,10 @@ function upsertFood(text, food) {
 }
 
 // Removes the row for this food name, if there is one. Returns the new text.
+/**
+ * @param {string} text
+ * @param {string} name
+ */
 function removeFood(text, name) {
   const lines = String(text || '').split('\n');
   const key = String(name).trim().toLowerCase();
@@ -239,10 +284,18 @@ function removeFood(text, name) {
 
 // Returns a copy of the food with a named portion added or replaced.
 // qty/unit must be something toGrams understands for this food.
+/**
+ * @param {Food} food
+ * @param {string} name
+ * @param {number | string} qty
+ * @param {string} unit
+ * @returns {Food | null}
+ */
 function withPortion(food, name, qty, unit) {
   const label = normalizeUnit(name);
   const grams = toGrams(food, qty, unit);
   if (!label || !(grams > 0)) return null;
+  /** @type {Portion} */
   const portion = {
     unit: label,
     amount: 1,

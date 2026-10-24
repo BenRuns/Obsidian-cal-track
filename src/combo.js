@@ -6,20 +6,31 @@
 import { MACROS, makeCustomFood } from './food.js';
 import { formatNumber } from './table.js';
 
+/** @typedef {import('./types').Food} Food */
+/** @typedef {import('./types').Ingredient} Ingredient */
+/** @typedef {import('./types').Nutrients} Nutrients */
+
 // items: [{ name, qty, unit, grams, nutrients }] — nutrients are totals for
 // that amount, grams null when the food has no known weight.
 // Returns a food (like makeCustomFood's) or null when calories are unknown.
+/**
+ * @param {{ name: string, items: { name: string, qty: number | string, unit: string, grams: number | null, nutrients?: Nutrients }[], servings?: number }} combo
+ * @returns {Food | null}
+ */
 function makeCombo({ name, items, servings = 1 }) {
   const n = Number(servings) > 0 ? Number(servings) : 1;
   if (!items.length) return null;
-  const sums = {};
+  /** @type {Nutrients} */
+  const sums = { kcal: null, protein: null, carbs: null, fat: null };
   for (const k of MACROS) {
-    const vals = items.map((i) => i.nutrients?.[k]).filter((v) => v !== null && v !== undefined);
-    sums[k] = vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+    for (const i of items) {
+      const v = i.nutrients?.[k];
+      if (v !== null && v !== undefined) sums[k] = (sums[k] ?? 0) + v;
+    }
   }
   if (sums.kcal === null) return null;
-  const weighed = items.every((i) => i.grams > 0);
-  const totalGrams = weighed ? items.reduce((a, i) => a + i.grams, 0) : null;
+  const weighed = items.every((i) => i.grams !== null && i.grams > 0);
+  const totalGrams = weighed ? items.reduce((a, i) => a + (i.grams ?? 0), 0) : null;
   const food = makeCustomFood({
     name,
     servingAmount: 1,
@@ -35,7 +46,7 @@ function makeCombo({ name, items, servings = 1 }) {
     food.portions.push({
       unit: 'batch',
       amount: 1,
-      grams: serving.grams * n,
+      grams: (serving?.grams ?? 0) * n,
       def: `${formatNumber(n, 3)} serving`,
     });
   }
@@ -45,13 +56,16 @@ function makeCombo({ name, items, servings = 1 }) {
 }
 
 // [{ name, qty, unit }] ⇄ "Oats (40 g); Bananas, raw (1 medium)"
+/** @param {Ingredient[] | undefined} ingredients */
 function ingredientsText(ingredients) {
   return (ingredients || [])
     .map((i) => `${String(i.name).replace(/;/g, ',')} (${formatNumber(i.qty, 3)} ${i.unit})`)
     .join('; ');
 }
 
+/** @param {string | null | undefined} text */
 function parseIngredients(text) {
+  /** @type {Ingredient[]} */
   const out = [];
   for (const part of String(text || '').split(';')) {
     // The last "(amount unit)" — names can have their own parentheses.
