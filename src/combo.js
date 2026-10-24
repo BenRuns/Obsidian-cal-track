@@ -1,12 +1,10 @@
-'use strict';
-
 // Combos: several foods saved as one My foods entry ("my usual breakfast",
 // "chili, makes 6"). Logged as a single row; its numbers are the sum of its
 // ingredients, divided by the servings it makes. The ingredients are kept
 // (an Ingredients column in My foods) so the combo can be edited later.
 
-const { MACROS, makeCustomFood } = require('./food');
-const { formatNumber } = require('./table');
+import { MACROS, makeCustomFood } from './food.js';
+import { formatNumber } from './table.js';
 
 // items: [{ name, qty, unit, grams, nutrients }] — nutrients are totals for
 // that amount, grams null when the food has no known weight.
@@ -63,4 +61,4 @@ function parseIngredients(text) {
   return out;
 }
 
-module.exports = { makeCombo, ingredientsText, parseIngredients };
+export { ingredientsText, makeCombo, parseIngredients };

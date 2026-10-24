@@ -1,15 +1,13 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const {
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
   dailyConfig,
-  notePath,
   dateOfNote,
   fillTemplate,
   hasLogBlock,
+  notePath,
   withLogBlock,
-} = require('../src/daily');
+} from '../src/daily.js';
 
 // Just enough of moment for these tests: YYYY MM DD HH mm and [literals], in UTC.
 function fakeMoment(iso) {

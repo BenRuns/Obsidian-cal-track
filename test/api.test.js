@@ -1,8 +1,9 @@
-'use strict';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import manifest from '../manifest.json' with { type: 'json' };
+import { searchAll, searchUsda, USER_AGENT } from '../src/api.js';
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { searchUsda, searchAll } = require('../src/api');
+const { version } = manifest;
 
 function stub(routes) {
   const calls = [];
@@ -62,7 +63,7 @@ test('searchAll skips disabled sources', async () => {
   assert.equal(calls.length, 1);
 });
 
-const { asBarcode, sameBarcode } = require('../src/api');
+import { asBarcode, sameBarcode } from '../src/api.js';
 
 const offProduct = {
   status: 1,
@@ -149,8 +150,6 @@ test('unknown barcode returns no foods and no error', async () => {
 });
 
 test('Open Food Facts requests identify the app, its version and a contact email', async () => {
-  const { USER_AGENT } = require('../src/api');
-  const { version } = require('../manifest.json');
   const seen = [];
   const request = async ({ url, headers }) => {
     if (url.includes('openfoodfacts.org')) seen.push(headers?.['User-Agent']);
@@ -229,7 +228,7 @@ test('rate limited by Search-a-licious: no second request to the classic search'
   assert.match(errors[0], /Rate limited/);
 });
 
-const { getUsdaFood, backoffDelays } = require('../src/api');
+import { backoffDelays, getUsdaFood } from '../src/api.js';
 
 test('backoff delays double each retry', () => {
   assert.deepEqual(backoffDelays(3, 500), [500, 1000, 2000]);

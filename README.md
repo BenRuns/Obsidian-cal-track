@@ -46,7 +46,7 @@ From then on, use **Add food** in that log, or the command again. Optionally, [g
 | **Add food to today** | Search → pick a quantity, unit and meal → adds the food to today's log, then opens today's note. Creates the note from your template if it doesn't exist yet, and adds the `cal-track` block to it if it's missing. Also on the ribbon (🍴). |
 | **Open today's food log** | Opens today's daily note, creating it (with the block) if needed. |
 | **New combo** | Saves several foods as one, for meals you eat often or recipes. See Combos. |
-| **Open My foods** | Opens your food database note, creating it if needed. |
+| **Open my foods** | Opens your food database note, creating it if needed. |
 
 In a daily note's block:
 - **Add food** logs to that note's day, so you can fill in yesterday from yesterday's note.
@@ -128,17 +128,17 @@ Your own food database is a normal note, `Cal Track/Foods.md` by default (you ca
 - **Portions** are extra units, separated by `;`, each written `name = quantity unit`. A portion can use any unit the food already has.
 
 Ways foods get there:
-- **+ Custom** in the search box: type in a nutrition label.
+- **Custom food** in the search box: type in a nutrition label.
 - **Save as portion…** in the quantity picker: name the current amount ("my bowl") and it becomes a unit for that food. This works on online foods too, and saves them to My foods.
-- **Save to My foods** in the quantity picker: keeps an online food, so it's found instantly and works offline.
-- **Open My foods** command: edit the note directly. Changes apply on the next search.
-- **+ Combo** in the search box, or the **New combo** command: several foods saved as one (see below).
+- **Save to my foods** in the quantity picker: keeps an online food, so it's found instantly and works offline.
+- **Open my foods** command: edit the note directly. Changes apply on the next search.
+- **New combo** in the search box or the command palette: several foods saved as one (see below).
 
 ### Combos
 
 A combo is several foods saved as one entry in My foods, so something you eat often takes one step to log. It could be your usual breakfast (oats, a banana, a cup of milk) or a recipe (a pot of chili that makes 6 servings).
 
-1. Tap **+ Combo** in the search box, or run **New combo**.
+1. Tap **New combo** in the search box, or run the **New combo** command.
 2. Name it, and add each food with its amount the usual way (search, then quantity and unit).
 3. Set **Servings** to how many servings it makes: 1 for a single meal, more for a recipe.
 4. **Save.** If you started from the search box, the quantity picker opens next so you can log it right away.
@@ -196,10 +196,11 @@ Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or a
 
 ```bash
 npm install
-npm run build   # → main.js
-npm test        # units, parsers, CSV log, daily notes
-npm run lint
-npm run demo    # → demo/dist/cal-track-demo.html, a browser demo with sample foods
+npm run build           # → main.js
+npm test                # units, parsers, CSV log, daily notes
+npm run lint            # Biome
+npm run lint:obsidian   # Obsidian's plugin guidelines, as its automated review checks them
+npm run demo            # → demo/dist/cal-track-demo.html, a browser demo with sample foods
 ```
 
 The database parsers are tested against fixtures in the documented USDA and Open Food Facts response formats (`test/food.test.js`).

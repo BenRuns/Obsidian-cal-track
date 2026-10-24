@@ -1,6 +1,4 @@
-'use strict';
-
-const { normalizeUnit, isMassUnit, isVolumeUnit, MASS_UNITS, VOLUME_UNITS } = require('./units');
+import { isMassUnit, isVolumeUnit, MASS_UNITS, normalizeUnit, VOLUME_UNITS } from './units.js';
 
 // ─── Normalized food shape ────────────────────────────────────────────────────
 //
@@ -274,16 +272,16 @@ function nutrientsFor(food, grams) {
   return out;
 }
 
-module.exports = {
+export {
+  displayName,
   MACROS,
-  splitLeadingAmount,
-  portionUnit,
-  tidyCase,
-  parseUsdaFood,
-  parseUsdaSearch,
+  makeCustomFood,
+  nutrientsFor,
   parseOffProduct,
   parseOffSearch,
-  makeCustomFood,
-  displayName,
-  nutrientsFor,
+  parseUsdaFood,
+  parseUsdaSearch,
+  portionUnit,
+  splitLeadingAmount,
+  tidyCase,
 };

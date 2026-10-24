@@ -1,8 +1,6 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { toGrams, unitsFor, densityOf, normalizeUnit } = require('../src/units');
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { densityOf, normalizeUnit, toGrams, unitsFor } from '../src/units.js';
 
 const banana = {
   per100g: { kcal: 89 },

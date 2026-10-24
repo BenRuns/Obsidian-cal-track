@@ -1,13 +1,11 @@
-'use strict';
-
 // Browser demo of Cal Track: the plugin's own units / food / CSV log modules,
 // with a daily note and its log.csv standing in for Obsidian. The note shows
 // its day's foods the way the plugin's cal-track block does.
 
-const { toGrams, unitsFor, normalizeUnit } = require('../src/units');
-const { displayName, nutrientsFor, makeCustomFood } = require('../src/food');
-const { formatNumber } = require('../src/table');
-const L = require('../src/logcsv');
+import { toGrams, unitsFor, normalizeUnit } from '../src/units.js';
+import { displayName, nutrientsFor, makeCustomFood } from '../src/food.js';
+import { formatNumber } from '../src/table.js';
+import * as L from '../src/logcsv.js';
 
 // Approximate USDA SR Legacy values, per 100 g.
 const S = (name, kcal, protein, carbs, fat, portions) => ({

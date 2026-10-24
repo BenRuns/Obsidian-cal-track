@@ -1,0 +1,15 @@
+{
+  "//": "Only for type-aware linting (npm run lint:obsidian); the plugin is plain JavaScript bundled by esbuild.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js", "manifest.json"]
+}

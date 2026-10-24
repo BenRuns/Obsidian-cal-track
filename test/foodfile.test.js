@@ -1,16 +1,8 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const {
-  parsePer,
-  parseFoodFile,
-  upsertFood,
-  withPortion,
-  newFileLines,
-} = require('../src/foodfile');
-const { makeCustomFood, nutrientsFor, displayName } = require('../src/food');
-const { toGrams, unitsFor } = require('../src/units');
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { displayName, makeCustomFood, nutrientsFor } from '../src/food.js';
+import { newFileLines, parseFoodFile, parsePer, upsertFood, withPortion } from '../src/foodfile.js';
+import { toGrams, unitsFor } from '../src/units.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ ${b}`);
 const kcalOf = (food, qty, unit) => nutrientsFor(food, toGrams(food, qty, unit)).kcal;

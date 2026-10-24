@@ -1,16 +1,7 @@
-'use strict';
-
-const { makeCustomFood, splitLeadingAmount } = require('./food');
-const { ingredientsText, parseIngredients } = require('./combo');
-const { normalizeUnit, isMassUnit, isVolumeUnit, MASS_UNITS, toGrams } = require('./units');
-const {
-  findTables,
-  splitRow,
-  joinRow,
-  escapeCell,
-  unescapeCell,
-  formatNumber,
-} = require('./table');
+import { ingredientsText, parseIngredients } from './combo.js';
+import { makeCustomFood, splitLeadingAmount } from './food.js';
+import { escapeCell, findTables, formatNumber, joinRow, splitRow, unescapeCell } from './table.js';
+import { isMassUnit, isVolumeUnit, MASS_UNITS, normalizeUnit, toGrams } from './units.js';
 
 // ─── My foods file ────────────────────────────────────────────────────────────
 //
@@ -261,12 +252,4 @@ function withPortion(food, name, qty, unit) {
   return { ...food, portions: [...food.portions.filter((p) => p.unit !== label), portion] };
 }
 
-module.exports = {
-  parsePer,
-  parseFoodFile,
-  foodCells,
-  upsertFood,
-  removeFood,
-  withPortion,
-  newFileLines,
-};
+export { foodCells, newFileLines, parseFoodFile, parsePer, removeFood, upsertFood, withPortion };

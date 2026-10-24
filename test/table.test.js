@@ -1,15 +1,13 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const {
-  splitRow,
-  joinRow,
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
   escapeCell,
-  unescapeCell,
   findTables,
   formatNumber,
-} = require('../src/table');
+  joinRow,
+  splitRow,
+  unescapeCell,
+} from '../src/table.js';
 
 test('splitRow keeps escaped pipes and empty cells', () => {
   assert.deepEqual(splitRow('| a | b \\| c |  |'), ['a', 'b \\| c', '']);

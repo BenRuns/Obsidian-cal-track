@@ -1,6 +1,4 @@
-'use strict';
-
-const { parseUsdaSearch, parseUsdaFood, parseOffSearch } = require('./food');
+import { parseOffSearch, parseUsdaFood, parseUsdaSearch } from './food.js';
 
 // ─── Food database lookups ────────────────────────────────────────────────────
 //
@@ -13,7 +11,10 @@ const OFF_BASE = 'https://world.openfoodfacts.org';
 // overloaded (HTTP 503) and ignores `fields`, sending whole product records.
 const OFF_SEARCH = 'https://search.openfoodfacts.org';
 const OFF_FIELDS = 'code,product_name,brands,nutriments,serving_size,serving_quantity';
-const { version } = require('../manifest.json');
+
+import manifest from '../manifest.json' with { type: 'json' };
+
+const { version } = manifest;
 
 // Open Food Facts asks every app to identify itself as
 // "AppName/Version (ContactEmail)", so they can reach the maintainer
@@ -42,8 +43,11 @@ function backoffDelays(retries, baseMs) {
 const USDA_RETRY_DELAYS_MS = backoffDelays(USDA_RETRIES, USDA_RETRY_BASE_MS);
 
 // Up to 50% random jitter, so clients that failed together don't all retry
-// at the same instant.
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms * (1 + Math.random() * 0.5)));
+// at the same instant. A zero wait (tests) skips the timer altogether.
+const pause = (ms) =>
+  ms > 0
+    ? new Promise((resolve) => window.setTimeout(resolve, ms * (1 + Math.random() * 0.5)))
+    : Promise.resolve();
 
 // body: sent as a JSON POST instead of a GET.
 async function getJson(request, url, headers, { notFoundOk = false, retryDelays = [], body } = {}) {
@@ -58,11 +62,11 @@ async function getJson(request, url, headers, { notFoundOk = false, retryDelays 
     } catch (e) {
       // requestUrl rejects on network errors even with throw: false.
       if (!canRetry) throw e;
-      await sleep(retryDelays[attempt]);
+      await pause(retryDelays[attempt]);
       continue;
     }
     if (!canRetry || !TRANSIENT_STATUSES.has(res.status)) break;
-    await sleep(retryDelays[attempt]);
+    await pause(retryDelays[attempt]);
   }
   if (notFoundOk && res.status === 404) return null;
   if (res.status === 429) {
@@ -226,15 +230,15 @@ async function searchAll(request, query, settings) {
   return { foods, errors, barcode: code, rateLimited };
 }
 
-module.exports = {
-  backoffDelays,
-  USER_AGENT,
-  searchUsda,
-  getUsdaFood,
-  searchOff,
-  searchAll,
+export {
   asBarcode,
-  sameBarcode,
+  backoffDelays,
+  getUsdaFood,
   lookupOffBarcode,
   lookupUsdaBarcode,
+  sameBarcode,
+  searchAll,
+  searchOff,
+  searchUsda,
+  USER_AGENT,
 };

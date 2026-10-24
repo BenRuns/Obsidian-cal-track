@@ -1,9 +1,7 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { TTLCache } = require('../src/cache');
-const { cachedSearch, RATE_LIMIT_COOLDOWN_MS } = require('../src/lookup');
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { TTLCache } from '../src/cache.js';
+import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from '../src/lookup.js';
 
 const usdaOk = {
   status: 200,

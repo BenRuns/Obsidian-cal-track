@@ -1,5 +1,3 @@
-'use strict';
-
 // ─── Small in-memory TTL cache ────────────────────────────────────────────────
 //
 // Used to avoid re-querying the food databases for a search or lookup the
@@ -41,4 +39,4 @@ class TTLCache {
   }
 }
 
-module.exports = { TTLCache };
+export { TTLCache };

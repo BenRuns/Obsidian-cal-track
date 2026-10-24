@@ -1,23 +1,21 @@
-'use strict';
-
 // Fixtures follow the documented response shapes of USDA FoodData Central
 // (https://fdc.nal.usda.gov/api-guide) and Open Food Facts
 // (https://openfoodfacts.github.io/openfoodfacts-server/api/).
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const {
-  splitLeadingAmount,
-  portionUnit,
-  tidyCase,
-  parseUsdaSearch,
-  parseUsdaFood,
-  parseOffSearch,
-  makeCustomFood,
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
   displayName,
+  makeCustomFood,
   nutrientsFor,
-} = require('../src/food');
-const { toGrams } = require('../src/units');
+  parseOffSearch,
+  parseUsdaFood,
+  parseUsdaSearch,
+  portionUnit,
+  splitLeadingAmount,
+  tidyCase,
+} from '../src/food.js';
+import { toGrams } from '../src/units.js';
 
 const usdaSearch = {
   foods: [

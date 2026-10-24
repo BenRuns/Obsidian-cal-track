@@ -1,11 +1,9 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { makeCombo, ingredientsText, parseIngredients } = require('../src/combo');
-const { parseFoodFile, upsertFood, removeFood } = require('../src/foodfile');
-const { toGrams } = require('../src/units');
-const { nutrientsFor } = require('../src/food');
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { ingredientsText, makeCombo, parseIngredients } from '../src/combo.js';
+import { nutrientsFor } from '../src/food.js';
+import { parseFoodFile, removeFood, upsertFood } from '../src/foodfile.js';
+import { toGrams } from '../src/units.js';
 
 const oats = {
   name: 'Oats',

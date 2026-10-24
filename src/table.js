@@ -1,5 +1,3 @@
-'use strict';
-
 // ─── Markdown tables ──────────────────────────────────────────────────────────
 //
 // Reading and writing the pipe tables in My foods (see foodfile.js): splitting
@@ -123,4 +121,4 @@ function formatNumber(v, decimals) {
   return String(Math.round(v * f) / f);
 }
 
-module.exports = { splitRow, joinRow, escapeCell, unescapeCell, findTables, formatNumber };
+export { escapeCell, findTables, formatNumber, joinRow, splitRow, unescapeCell };

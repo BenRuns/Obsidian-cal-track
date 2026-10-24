@@ -1,5 +1,3 @@
-'use strict';
-
 // ─── Units ────────────────────────────────────────────────────────────────────
 //
 // Every food's nutrition is stored per 100 g. A quantity + unit is turned into
@@ -133,13 +131,13 @@ function unitsFor(food) {
   return out;
 }
 
-module.exports = {
-  MASS_UNITS,
-  VOLUME_UNITS,
-  normalizeUnit,
+export {
+  densityOf,
   isMassUnit,
   isVolumeUnit,
-  densityOf,
+  MASS_UNITS,
+  normalizeUnit,
   toGrams,
   unitsFor,
+  VOLUME_UNITS,
 };

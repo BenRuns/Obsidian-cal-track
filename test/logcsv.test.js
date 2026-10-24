@@ -1,21 +1,19 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const {
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  appendEntry,
+  entriesFor,
+  groupByMeal,
+  mealForTime,
+  newId,
   parseCsv,
   parseLog,
-  serializeLog,
-  appendEntry,
-  updateEntry,
-  removeEntry,
-  entriesFor,
-  totals,
   parseMeals,
-  mealForTime,
-  groupByMeal,
-  newId,
-} = require('../src/logcsv');
+  removeEntry,
+  serializeLog,
+  totals,
+  updateEntry,
+} from '../src/logcsv.js';
 
 const banana = {
   id: 'a1',

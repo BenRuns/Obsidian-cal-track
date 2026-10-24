@@ -1,16 +1,19 @@
 {
   "name": "obsidian-cal-track",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "build": "esbuild src/main.js --bundle --external:obsidian --format=cjs --outfile=main.js",
     "dev": "esbuild src/main.js --bundle --external:obsidian --format=cjs --outfile=main.js --watch",
     "lint": "biome check src test",
     "test": "node --test test/*.test.js",
-    "demo": "node demo/build.js"
+    "demo": "node demo/build.js",
+    "lint:obsidian": "eslint ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2"
   }
 }

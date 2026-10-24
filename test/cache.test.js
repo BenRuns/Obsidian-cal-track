@@ -1,8 +1,6 @@
-'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { TTLCache } = require('../src/cache');
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { TTLCache } from '../src/cache.js';
 
 test('get/set round-trip', () => {
   const c = new TTLCache({ ttlMs: 1000, maxEntries: 10 });

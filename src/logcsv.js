@@ -1,5 +1,3 @@
-'use strict';
-
 // The food log: one CSV file, one row per food eaten. Daily notes don't hold
 // any food data — they show the rows for their date (see the cal-track block
 // in main.js). Columns are found by header name, so a hand-edited file with
@@ -188,19 +186,19 @@ function newId(now = Date.now(), rand = Math.random) {
     .padStart(4, '0')}`;
 }
 
-module.exports = {
+export {
+  appendEntry,
   COLUMNS,
   DECIMALS,
+  entriesFor,
+  groupByMeal,
+  mealForTime,
+  newId,
   parseCsv,
   parseLog,
-  serializeLog,
-  appendEntry,
-  updateEntry,
-  removeEntry,
-  entriesFor,
-  totals,
   parseMeals,
-  mealForTime,
-  groupByMeal,
-  newId,
+  removeEntry,
+  serializeLog,
+  totals,
+  updateEntry,
 };

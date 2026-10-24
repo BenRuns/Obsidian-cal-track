@@ -1,50 +1,48 @@
-'use strict';
-
-const {
+import {
+  MarkdownRenderChild,
+  Modal,
+  moment,
+  Notice,
+  normalizePath,
   Plugin,
   PluginSettingTab,
-  Setting,
-  Modal,
-  MarkdownRenderChild,
-  Notice,
-  TFile,
-  normalizePath,
   requestUrl,
-  moment,
-  setIcon,
   // Obsidian 1.11.4+; undefined on older versions, which keep the key in data.json.
   SecretComponent,
-} = require('obsidian');
-const { getUsdaFood, asBarcode } = require('./api');
-const { TTLCache } = require('./cache');
-const { cachedSearch, RATE_LIMIT_COOLDOWN_MS } = require('./lookup');
-const { displayName, nutrientsFor, makeCustomFood } = require('./food');
-const { toGrams, unitsFor, normalizeUnit } = require('./units');
-const { parseFoodFile, upsertFood, removeFood, withPortion, newFileLines } = require('./foodfile');
-const { makeCombo } = require('./combo');
-const {
+  Setting,
+  setIcon,
+  TFile,
+} from 'obsidian';
+import { asBarcode, getUsdaFood } from './api.js';
+import { TTLCache } from './cache.js';
+import { makeCombo } from './combo.js';
+import {
   DATE_KEY,
   dailyConfig,
-  notePath,
   dateOfNote,
   fillTemplate,
   hasLogBlock,
+  notePath,
   withLogBlock,
-} = require('./daily');
-const {
-  DECIMALS,
-  parseLog,
+} from './daily.js';
+import { displayName, makeCustomFood, nutrientsFor } from './food.js';
+import { newFileLines, parseFoodFile, removeFood, upsertFood, withPortion } from './foodfile.js';
+import {
   appendEntry,
-  updateEntry,
-  removeEntry,
+  DECIMALS,
   entriesFor,
-  totals,
-  parseMeals,
-  mealForTime,
   groupByMeal,
+  mealForTime,
   newId,
-} = require('./logcsv');
-const { formatNumber } = require('./table');
+  parseLog,
+  parseMeals,
+  removeEntry,
+  totals,
+  updateEntry,
+} from './logcsv.js';
+import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from './lookup.js';
+import { formatNumber } from './table.js';
+import { normalizeUnit, toGrams, unitsFor } from './units.js';
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
@@ -173,7 +171,7 @@ class CalTrackSettingTab extends PluginSettingTab {
         config
           ? `Today's note: ${notePath(config, moment())}. Folder, date format and template come ` +
               'from your Periodic Notes or Daily notes settings.'
-          : "Not set up. Turn on daily notes in the Periodic Notes plugin or Obsidian's Daily notes core plugin — Cal Track logs into daily notes.",
+          : "Not set up. Turn on daily notes in the Periodic Notes plugin or Obsidian's core daily notes plugin. Cal Track logs into daily notes.",
       );
 
     new Setting(containerEl)
@@ -240,7 +238,7 @@ class CalTrackSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Macro columns')
-      .setDesc('Show Protein, Carbs and Fat columns.')
+      .setDesc('Show protein, carbs and fat columns.')
       .addToggle((t) =>
         t.setValue(s.macros).onChange(async (v) => {
           s.macros = v;
@@ -251,7 +249,7 @@ class CalTrackSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Daily calorie goal')
-      .setDesc('Adds Goal and Remaining rows. Leave at 0 for none.')
+      .setDesc('Adds goal and remaining rows. Leave at 0 for none.')
       .addText((t) => {
         t.inputEl.type = 'number';
         t.setValue(String(s.dailyGoal || 0)).onChange(async (v) => {
@@ -346,12 +344,12 @@ class FoodSearchModal extends Modal {
     });
     const searchBtn = row.createEl('button', { cls: 'mod-cta', text: 'Search' });
     searchBtn.addEventListener('click', () => this.search());
-    const custom = row.createEl('button', { text: '+ Custom' });
+    const custom = row.createEl('button', { text: 'Custom food' });
     custom.title = 'Enter a food from its nutrition label';
     custom.addEventListener('click', () => this.addCustom());
     if (this.allowCombo) {
-      const combo = row.createEl('button', { text: '+ Combo' });
-      combo.title = 'Save several foods as one, e.g. your usual breakfast or a recipe';
+      const combo = row.createEl('button', { text: 'New combo' });
+      combo.title = 'Save several foods as one, such as your usual breakfast or a recipe';
       combo.addEventListener('click', () => {
         this.close();
         new ComboModal(this.plugin, { onSave: (food) => this.onChoose(food) }).open();
@@ -642,11 +640,11 @@ class PortionModal extends Modal {
       });
     }
     if (this.food.source !== 'local') {
-      const keepBtn = links.createEl('button', { cls: 'cal-track-link', text: 'Save to My foods' });
+      const keepBtn = links.createEl('button', { cls: 'cal-track-link', text: 'Save to my foods' });
       keepBtn.addEventListener('click', async () => {
         await this.adoptSaved(await this.plugin.saveMyFood(this.food));
         keepBtn.remove();
-        new Notice(`Saved ${displayName(this.food)} to My foods`);
+        new Notice(`Saved ${displayName(this.food)} to my foods`);
       });
     }
 
@@ -737,7 +735,7 @@ class CustomFoodModal extends Modal {
     this.titleEl.setText('Custom food');
     contentEl.createEl('p', {
       cls: 'setting-item-description',
-      text: 'Copy the numbers from the nutrition label. Saved to My foods for next time.',
+      text: 'Copy the numbers from the nutrition label. Saved to my foods for next time.',
     });
 
     const field = (name, key, opts = {}) =>
@@ -816,7 +814,7 @@ class ComboModal extends Modal {
     contentEl.addClass('cal-track-combo');
     contentEl.createEl('p', {
       cls: 'setting-item-description',
-      text: "Several foods saved as one. It's added to My foods and logged as a single row.",
+      text: "Several foods saved as one. It's added to my foods and logged as a single row.",
     });
 
     new Setting(contentEl).setName('Name').addText((t) =>
@@ -829,7 +827,9 @@ class ComboModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Servings')
-      .setDesc('How many servings this makes: 1 for a single meal, or e.g. 6 for a pot of chili.')
+      .setDesc(
+        'How many servings this makes: 1 for a single meal, or more for a recipe, like 6 for a pot of chili.',
+      )
       .addText((t) => {
         t.inputEl.type = 'number';
         t.inputEl.setAttr('min', '1');
@@ -841,7 +841,7 @@ class ComboModal extends Modal {
       });
 
     this.listEl = contentEl.createDiv({ cls: 'cal-track-combo-items' });
-    const add = contentEl.createEl('button', { text: '+ Add food' });
+    const add = contentEl.createEl('button', { text: 'Add food' });
     add.addEventListener('click', () => this.pick());
     this.totalsEl = contentEl.createDiv({ cls: 'cal-track-preview' });
 
@@ -971,7 +971,7 @@ class ComboModal extends Modal {
     this.close();
     if (renamed) await this.plugin.removeMyFood(this.original.name);
     const saved = await this.plugin.saveMyFood(food);
-    new Notice(`Saved ${name} to My foods`);
+    new Notice(`Saved ${name} to my foods`);
     this.onSave?.(saved);
   }
 }
@@ -1138,7 +1138,7 @@ class CalTrackPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-my-foods',
-      name: 'Open My foods',
+      name: 'Open my foods',
       callback: () => this.openMyFoods(),
     });
 
@@ -1405,7 +1405,7 @@ class CalTrackPlugin extends Plugin {
   requireDailyNotes() {
     if (this.dailyConfig()) return true;
     new Notice(
-      "Cal Track logs into daily notes — turn on daily notes in the Periodic Notes plugin or Obsidian's Daily notes core plugin.",
+      "Cal Track logs into daily notes. Turn them on in the Periodic Notes plugin or Obsidian's core daily notes plugin.",
       8000,
     );
     return false;
@@ -1523,4 +1523,4 @@ class CalTrackPlugin extends Plugin {
   }
 }
 
-module.exports = CalTrackPlugin;
+export default CalTrackPlugin;

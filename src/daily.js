@@ -1,5 +1,3 @@
-'use strict';
-
 // Daily notes: where today's note is, the date a note is for, and filling in
 // its template — matching what the Periodic Notes plugin or Obsidian's core
 // Daily notes plugin would do. Kept free of Obsidian imports so it can be
@@ -85,12 +83,4 @@ function withLogBlock(text) {
   return `${body ? `${body}\n\n` : ''}${LOG_BLOCK}\n`;
 }
 
-module.exports = {
-  DATE_KEY,
-  dailyConfig,
-  notePath,
-  dateOfNote,
-  fillTemplate,
-  hasLogBlock,
-  withLogBlock,
-};
+export { DATE_KEY, dailyConfig, dateOfNote, fillTemplate, hasLogBlock, notePath, withLogBlock };

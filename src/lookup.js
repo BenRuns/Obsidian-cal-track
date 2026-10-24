@@ -1,6 +1,4 @@
-'use strict';
-
-const { searchAll, asBarcode } = require('./api');
+import { asBarcode, searchAll } from './api.js';
 
 // ─── Cached, backoff-aware search ─────────────────────────────────────────────
 //
@@ -75,4 +73,4 @@ async function cachedSearch({ request, cache, cooldowns, settings, query, now = 
   return merged;
 }
 
-module.exports = { cachedSearch, cacheKey, RATE_LIMIT_COOLDOWN_MS };
+export { cachedSearch, cacheKey, RATE_LIMIT_COOLDOWN_MS };
