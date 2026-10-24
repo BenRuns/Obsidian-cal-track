@@ -159,6 +159,19 @@ The row's numbers are what gets logged. The ingredient list is only used when yo
 
 ---
 
+## Network use
+
+Cal Track connects to two food databases, and only when you look up a food. You can turn either one off in settings, and then it isn't contacted at all.
+
+| Service | When | What's sent |
+|---|---|---|
+| [USDA FoodData Central](https://fdc.nal.usda.gov/) (`api.nal.usda.gov`) | You search (Enter or **Search**), enter a complete barcode, or pick a USDA food that needs its full portion list | Your search text or barcode, the USDA food ID, and your USDA API key (or the shared `DEMO_KEY`) |
+| [Open Food Facts](https://world.openfoodfacts.org/) (`search.openfoodfacts.org`, `world.openfoodfacts.org`) | You search or enter a complete barcode | Your search text or barcode, and a User-Agent naming the plugin, its version and this repository, as Open Food Facts asks apps to |
+
+Like any web request, these also reach the service with your IP address.
+
+Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or accounts. Your food log (`log.csv`), My foods and your notes stay in your vault, and go wherever your own sync sends them. Your USDA key is kept in Obsidian's keychain on Obsidian 1.11.4+, or in the plugin's `data.json` on older versions.
+
 ## Settings
 
 - **Daily notes**: shows where today's note is, or that daily notes aren't set up
