@@ -30,11 +30,20 @@ It renders as a table, grouped by meal with a subtotal for each, with Total (and
 
 ---
 
+## Getting started
+
+1. Install Cal Track (see [Installation](#installation-manual)) and turn on daily notes: the **Periodic Notes** plugin, or Obsidian's core **Daily notes** plugin.
+2. Run **Add food to today** from the command palette, or tap 🍴 in the ribbon.
+3. Type a food and press **Enter** to search. Pick a result, set the quantity, unit and meal, and tap **Add**.
+4. Cal Track opens today's note. It's created from your daily note template if it didn't exist yet, with a food log at the bottom showing what you just added.
+
+From then on, use **Add food** in that log, or the command again. Optionally, [get a free USDA key](#getting-a-usda-key) for more reliable searches, and set a daily calorie goal in settings.
+
 ## Using it
 
 | Command | What it does |
 |---------|--------------|
-| **Add food to today** | Search → pick a quantity and unit → adds the food to today's log. Creates today's daily note from your template if it doesn't exist yet, and adds the `cal-track` block to it if it's missing. Also on the ribbon (🍴). |
+| **Add food to today** | Search → pick a quantity, unit and meal → adds the food to today's log, then opens today's note. Creates the note from your template if it doesn't exist yet, and adds the `cal-track` block to it if it's missing. Also on the ribbon (🍴). |
 | **Open today's food log** | Opens today's daily note, creating it (with the block) if needed. |
 | **New combo** | Saves several foods as one, for meals you eat often or recipes. See Combos. |
 | **Open My foods** | Opens your food database note, creating it if needed. |
@@ -166,7 +175,7 @@ The row's numbers are what gets logged. The ingredient list is only used when yo
 ## Installation (manual)
 
 1. Turn on daily notes: the **Periodic Notes** plugin, or Obsidian's core **Daily notes** plugin.
-2. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/BenRuns/Obsidian-cal-track/releases/latest).
+2. Get `main.js`, `manifest.json` and `styles.css`: from the [latest release](https://github.com/BenRuns/Obsidian-cal-track/releases/latest) once there is one, or build them yourself with `npm install && npm run build`.
 3. Copy them into `<vault>/.obsidian/plugins/cal-track/`.
 4. **Settings → Community plugins** → reload → enable **Cal Track**.
 
@@ -177,6 +186,7 @@ npm install
 npm run build   # → main.js
 npm test        # units, parsers, CSV log, daily notes
 npm run lint
+npm run demo    # → demo/dist/cal-track-demo.html, a browser demo with sample foods
 ```
 
 The database parsers are tested against fixtures in the documented USDA and Open Food Facts response formats (`test/food.test.js`).

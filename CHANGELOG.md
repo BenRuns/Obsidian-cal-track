@@ -1,21 +1,16 @@
 # Changelog
 
-## Unreleased
-
-- My foods: a local food database kept as an editable note (`Cal Track/Foods.md`), searched before USDA / Open Food Facts
-- Custom foods are saved to My foods
-- Save as portion: name the current amount ("my bowl = 300 g") and pick it as a unit later, on any food
-- Save to My foods: keep an online food for instant, offline use
-- Open My foods command; My foods note path setting
-- Barcode lookup: type a UPC / EAN into the search box to find the product on Open Food Facts and USDA branded foods
-- Search results and a food's full portion list are cached briefly, and a rate-limited source is backed off automatically instead of retried on every keystroke
-- USDA lookups retry automatically, with exponential backoff (up to 3 times), when FoodData Central has a momentary server error or dropped connection
-- New food logs put a blank line between `{{calc}}` and the table, so they render as a table on any Table Calc version (Obsidian won't render a table without a blank line above it)
-
 ## 0.1.0
 
-- Food lookup from USDA FoodData Central and Open Food Facts, plus custom foods from a nutrition label
-- Quantity + unit picker: database portions, mass units, and volume units when density is known
-- Writes rows into Table Calc `{{calc}}` tables with Total / Goal / Remaining formulas that stay correct as rows are added or removed
-- Adjust and remove the food row at the cursor (command palette or editor menu)
-- Saved & recent foods for instant, offline re-use
+First release.
+
+- **Food lookup** from USDA FoodData Central and Open Food Facts, searched on Enter. Barcode (UPC / EAN) lookup runs as soon as the number is complete, with a clear message when no product is found.
+- **Quantity, unit and meal picker:** database portions, mass units, and volume units when the density is known. Meals are Breakfast, Lunch, Dinner and Snack by default, configurable, and guessed from the time of day.
+- **Food log in a CSV file** (`Cal Track/log.csv`), one row per food, which you can open in a spreadsheet.
+- **Daily notes** (Periodic Notes or core Daily notes) show that day's foods in a `cal-track` block: grouped by meal with subtotals, Total / Goal / Remaining, and buttons to add, adjust or remove foods. Today's note is created from your template when needed.
+- **Add food to today** and **Open today's food log** commands; adding from the command or ribbon opens today's note.
+- **My foods:** your own food database as an editable note (`Cal Track/Foods.md`), searched first. Custom foods from a nutrition label, saved portions ("my bowl = 300 g"), and saving online foods for offline use.
+- **Combos:** several foods saved as one, e.g. a usual breakfast or a recipe with several servings, logged as a single row and editable later.
+- **Lookups are cached,** and a rate-limited source is backed off automatically.
+- **USDA lookups retry automatically,** with exponential backoff (up to 3 times), when FoodData Central has a momentary server error or dropped connection.
+- **USDA API key** stored in Obsidian's keychain on Obsidian 1.11.4+, with a link to the free signup.

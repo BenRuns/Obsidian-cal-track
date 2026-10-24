@@ -3,7 +3,7 @@
   "name": "Cal Track",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Look up calories and macros (USDA, Open Food Facts), pick quantity and unit, and log foods into Table Calc tables with live totals.",
+  "description": "Look up calories and macros (USDA, Open Food Facts), log what you eat to a CSV food log, and see each day's foods and totals in your daily notes.",
   "author": "Benjamin Patterson",
   "isDesktopOnly": false
 }

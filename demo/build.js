@@ -1,7 +1,7 @@
 'use strict';
 
 // Builds demo/dist/cal-track-demo.html: a single self-contained page that runs
-// the plugin's units / food / table modules and Table Calc's engine in a
+// the plugin's units / food / CSV log modules in a
 // browser, with sample foods instead of live database lookups.
 
 const fs = require('node:fs');

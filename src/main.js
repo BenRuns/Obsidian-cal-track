@@ -1111,13 +1111,16 @@ class CalTrackPlugin extends Plugin {
     this.views = new Set();
     this.addSettingTab(new CalTrackSettingTab(this.app, this));
 
-    this.addRibbonIcon('utensils', 'Add food to today', () => this.addFood(today()));
+    // From the command or ribbon, logging ends on today's note so you see it.
+    this.addRibbonIcon('utensils', 'Add food to today', () =>
+      this.addFood(today(), undefined, { open: true }),
+    );
 
     this.addCommand({
       id: 'add-food',
       name: 'Add food to today',
       icon: 'utensils',
-      callback: () => this.addFood(today()),
+      callback: () => this.addFood(today(), undefined, { open: true }),
     });
 
     this.addCommand({
@@ -1452,7 +1455,8 @@ class CalTrackPlugin extends Plugin {
 
   // meal: preselected in the picker. Without one, today's foods get a guess
   // from the time of day; other days start with no meal.
-  addFood(dateKey, meal) {
+  // open: show the day's note afterwards (unless it's already the open note).
+  addFood(dateKey, meal, { open = false } = {}) {
     if (!this.requireDailyNotes()) return;
     const meals = this.mealList();
     const guess = dateKey === today() ? mealForTime(meals, moment().format('HH:mm')) : '';
@@ -1462,12 +1466,12 @@ class CalTrackPlugin extends Plugin {
           meals,
           meal: meal ?? guess,
           submitText: 'Add',
-          onSubmit: (p) => this.logFood(dateKey, food, p),
+          onSubmit: (p) => this.logFood(dateKey, food, p, { open }),
         }),
     });
   }
 
-  async logFood(dateKey, food, portion) {
+  async logFood(dateKey, food, portion, { open = false } = {}) {
     const entry = {
       id: newId(),
       date: dateKey,
@@ -1479,6 +1483,8 @@ class CalTrackPlugin extends Plugin {
     try {
       const file = await this.ensureDailyNote(dateKey);
       new Notice(`Added ${entry.food} to ${file?.basename ?? dateKey}`);
+      if (open && file && this.app.workspace.getActiveFile() !== file)
+        await this.app.workspace.getLeaf(false).openFile(file);
     } catch (e) {
       new Notice(`Logged ${entry.food}, but couldn't create the daily note: ${e.message}`);
     }

@@ -13,7 +13,7 @@ body:
       label: Describe the issue
       description: What happened, and what did you expect to happen instead?
       placeholder: |
-        When I log "1 medium" banana, the row shows 0 kcal instead of about 105.
+        When I log "1 medium" banana, the daily log shows 0 kcal instead of about 105.
     validations:
       required: true
 
@@ -22,26 +22,22 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run "Add food to log" from the command palette
-        2. Search for "banana" and pick "Bananas, raw" (USDA)
-        3. Choose 1 medium
-        4. See the row
+        1. Run "Add food to today" from the command palette
+        2. Search for "banana" (Enter) and pick "Bananas, raw" (USDA)
+        3. Choose 1 medium, Breakfast
+        4. See the row in today's note
     validations:
       required: false
 
   - type: textarea
-    id: sample-markdown
+    id: sample-log
     attributes:
-      label: Sample markdown
-      description: If the problem involves a food log, paste the table (including the `{{calc}}` marker). It will be formatted as markdown automatically.
-      render: markdown
+      label: Food log rows
+      description: If the problem involves logged foods, paste the header and the affected rows from `Cal Track/log.csv`. If it involves My foods or a combo, paste its row from `Cal Track/Foods.md` instead.
+      render: text
       placeholder: |
-        {{calc}}
-
-        | Food | Qty | Unit | kcal |
-        | --- | ---: | --- | ---: |
-        | Bananas, raw | 1 | medium | 105 |
-        | **Total** |  |  | =SUM(D1:D1) |
+        id,date,time,meal,food,qty,unit,kcal,protein,carbs,fat
+        mgx3k2a1b,2026-10-15,08:05,Breakfast,"Bananas, raw",1,medium,105,1.3,26.9,0.4
 
   - type: dropdown
     id: source
@@ -53,6 +49,7 @@ body:
         - Open Food Facts
         - My foods
         - Custom food
+        - Combo
         - Not food-specific
         - Not sure
 
@@ -68,11 +65,31 @@ body:
   - type: input
     id: plugin-version
     attributes:
-      label: Cal Track and Table Calc versions
+      label: Cal Track version
       description: Found under Settings → Community plugins.
-      placeholder: "e.g. Cal Track 0.1.0, Table Calc 2.2.0"
+      placeholder: "e.g. 0.1.0"
     validations:
       required: true
+
+  - type: dropdown
+    id: daily-notes
+    attributes:
+      label: Daily notes plugin
+      description: Cal Track logs into daily notes from one of these.
+      options:
+        - Periodic Notes
+        - Obsidian's core Daily notes
+        - Neither is turned on
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: usda-key
+    attributes:
+      label: USDA API key
+      description: Do you use your own USDA key, or the shared DEMO_KEY? Don't paste the key itself.
+      placeholder: "e.g. my own key / DEMO_KEY"
 
   - type: dropdown
     id: platform
