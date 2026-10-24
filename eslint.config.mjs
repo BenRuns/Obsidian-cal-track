@@ -15,6 +15,11 @@ export default defineConfig([
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
+      // The recommended config turns these on only for .ts files, but Obsidian's
+      // review also runs them on .js, and an error there fails the release.
+      'obsidianmd/no-unsupported-api': 'error',
+      'obsidianmd/no-plugin-as-component': 'error',
+      'obsidianmd/no-view-references-in-plugin': 'error',
       // Proper names the default lists don't know. Obsidian's own review uses
       // the defaults, so it may still show these as warnings.
       'obsidianmd/ui/sentence-case': [

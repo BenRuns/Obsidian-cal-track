@@ -7,7 +7,8 @@ import {
   Plugin,
   PluginSettingTab,
   requestUrl,
-  // Obsidian 1.11.4+; undefined on older versions, which keep the key in data.json.
+  requireApiVersion,
+  // Obsidian 1.11.4+, only used behind requireApiVersion(); older versions keep the key in data.json.
   SecretComponent,
   Setting,
   setIcon,
@@ -93,60 +94,62 @@ class CalTrackSettingTab extends PluginSettingTab {
       });
     const setting = new Setting(containerEl).setName('USDA API key');
 
-    if (!this.plugin.hasKeychain()) {
-      setting.setDesc(about()).addText((t) =>
-        t
-          .setPlaceholder('DEMO_KEY')
-          .setValue(s.usdaApiKey)
-          .onChange(async (v) => {
-            s.usdaApiKey = v.trim();
+    // requireApiVersion() must guard the keychain APIs directly, or Obsidian's
+    // review flags them as newer than minAppVersion.
+    if (requireApiVersion('1.11.4') && this.plugin.hasKeychain()) {
+      const missing = s.usdaKeySecret && !this.plugin.app.secretStorage.getSecret(s.usdaKeySecret);
+      setting
+        .setDesc(
+          about(
+            "Kept in Obsidian's keychain on this device, not synced: set it once on each device.",
+            ...(missing ? [`The secret "${s.usdaKeySecret}" isn't set on this device yet.`] : []),
+          ),
+        )
+        .addComponent((el) =>
+          new SecretComponent(this.app, el).setValue(s.usdaKeySecret).onChange(async (name) => {
+            s.usdaKeySecret = name;
+            // The key now lives in the keychain; don't leave a copy in data.json.
+            if (name) s.usdaApiKey = '';
             keyChanged();
             await save();
+            this.display();
           }),
-      );
+        );
+
+      // A key saved before the keychain existed: move it, one click.
+      if (s.usdaApiKey && !s.usdaKeySecret) {
+        new Setting(containerEl)
+          .setName('Move your key to the keychain')
+          .setDesc(
+            "Your USDA key is saved in plain text in this vault's data.json. Moving it removes it " +
+              'from data.json, so other devices need it set in their own keychain.',
+          )
+          .addButton((b) =>
+            b
+              .setButtonText('Move')
+              .setCta()
+              .onClick(async () => {
+                this.plugin.app.secretStorage.setSecret(USDA_SECRET, s.usdaApiKey);
+                s.usdaKeySecret = USDA_SECRET;
+                s.usdaApiKey = '';
+                await save();
+                this.display();
+              }),
+          );
+      }
       return;
     }
 
-    const missing = s.usdaKeySecret && !this.plugin.app.secretStorage.getSecret(s.usdaKeySecret);
-    setting
-      .setDesc(
-        about(
-          "Kept in Obsidian's keychain on this device, not synced: set it once on each device.",
-          ...(missing ? [`The secret "${s.usdaKeySecret}" isn't set on this device yet.`] : []),
-        ),
-      )
-      .addComponent((el) =>
-        new SecretComponent(this.app, el).setValue(s.usdaKeySecret).onChange(async (name) => {
-          s.usdaKeySecret = name;
-          // The key now lives in the keychain; don't leave a copy in data.json.
-          if (name) s.usdaApiKey = '';
+    setting.setDesc(about()).addText((t) =>
+      t
+        .setPlaceholder('DEMO_KEY')
+        .setValue(s.usdaApiKey)
+        .onChange(async (v) => {
+          s.usdaApiKey = v.trim();
           keyChanged();
           await save();
-          this.display();
         }),
-      );
-
-    // A key saved before the keychain existed: move it, one click.
-    if (s.usdaApiKey && !s.usdaKeySecret) {
-      new Setting(containerEl)
-        .setName('Move your key to the keychain')
-        .setDesc(
-          "Your USDA key is saved in plain text in this vault's data.json. Moving it removes it " +
-            'from data.json, so other devices need it set in their own keychain.',
-        )
-        .addButton((b) =>
-          b
-            .setButtonText('Move')
-            .setCta()
-            .onClick(async () => {
-              this.plugin.app.secretStorage.setSecret(USDA_SECRET, s.usdaApiKey);
-              s.usdaKeySecret = USDA_SECRET;
-              s.usdaApiKey = '';
-              await save();
-              this.display();
-            }),
-        );
-    }
+    );
   }
 
   display() {
@@ -1196,13 +1199,15 @@ class CalTrackPlugin extends Plugin {
   // ── Food lookups (cached, rate-limit aware — see lookup.js) ──
 
   hasKeychain() {
-    return Boolean(SecretComponent && this.app.secretStorage);
+    return requireApiVersion('1.11.4') && Boolean(this.app.secretStorage);
   }
 
   // The keychain secret when one is chosen, else the plain-text key; '' → DEMO_KEY.
   usdaKey() {
     const name = this.settings.usdaKeySecret;
-    if (name && this.hasKeychain()) return this.app.secretStorage.getSecret(name) || '';
+    if (requireApiVersion('1.11.4') && name && this.app.secretStorage) {
+      return this.app.secretStorage.getSecret(name) || '';
+    }
     return this.settings.usdaApiKey || '';
   }
 
