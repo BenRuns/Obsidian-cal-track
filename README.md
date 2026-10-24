@@ -2,6 +2,8 @@
 
 Log what you eat into your daily notes. Search a food database, pick a quantity and unit ("1 medium", "2 tbsp", "150 g", "6 oz"), and Cal Track records the calories and macros. Each daily note shows that day's foods with live totals.
 
+![A daily note's food log: foods grouped under Breakfast and Lunch with subtotals for kcal, protein, carbs and fat, and buttons to edit, remove or add foods](docs/screenshots/table.png)
+
 Every entry goes into one CSV file in your vault, `Cal Track/log.csv`, with one row per food eaten:
 
 ```csv
@@ -34,6 +36,8 @@ It renders as a table, grouped by meal with a subtotal for each, with Total (and
 
 1. Install Cal Track (see [Installation](#installation-manual)) and turn on daily notes: the **Periodic Notes** plugin, or Obsidian's core **Daily notes** plugin.
 2. Run **Add food to today** from the command palette, or tap 🍴 in the ribbon.
+
+   ![The command palette with Cal Track: Open my foods and Cal Track: Add food to today](docs/screenshots/commands.png)
 3. Type a food and press **Enter** to search. Pick a result, set the quantity, unit and meal, and tap **Add**.
 4. Cal Track opens today's note. It's created from your daily note template if it didn't exist yet, with a food log at the bottom showing what you just added.
 
@@ -88,6 +92,8 @@ Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and d
 | [Open Food Facts](https://world.openfoodfacts.org/) | Packaged foods worldwide | None |
 | **My foods** | Your own foods and portions, kept in a note in your vault | — |
 
+![The Look up food dialog: a search box with Search, Custom food and New combo buttons, above a list of My foods with calories per serving or per 100 g](docs/screenshots/lookup.png)
+
 Typing filters **My foods** and recently used foods instantly. To search USDA and Open Food Facts, press **Enter** or tap **Search**. Results show under your own foods. Online searches don't run as you type: Open Food Facts allows 10 searches a minute and asks apps not to search on every keystroke, and USDA's shared `DEMO_KEY` allows only about 10 lookups an hour. A complete 12- or 13-digit barcode is the exception (see Barcodes).
 
 **Caching:** a search is cached for 10 minutes, and a food's full portion list (the extra request USDA needs for "1 medium", "1 cup", etc.) is cached for an hour — so searching again, reopening "Adjust" on the same food, or picking the same food twice doesn't cost another request. If a source returns a 429 (rate limited), it's skipped automatically for the next 15 minutes rather than retried on every search; the status line says how long is left. The `DEMO_KEY` quota is shared across every user of this plugin without their own key, so it can already be used up before you've searched anything yourself — a [personal key](https://fdc.nal.usda.gov/api-key-signup) isn't shared and clears any active cooldown as soon as you save it.
@@ -115,6 +121,10 @@ If you saved a key before updating to 1.11.4, settings offer **Move your key to 
 ### My foods
 
 Your own food database is a normal note, `Cal Track/Foods.md` by default (you can change the path in settings). You can read it, edit it by hand, and it syncs with the rest of your vault:
+
+![The Foods note: a short explanation of the Per and Portions columns, then a table of foods with Per, kcal, Protein, Carbs, Fat, Portions and Ingredients columns](docs/screenshots/foods.png)
+
+In Markdown:
 
 ```markdown
 | Food | Per | kcal | Protein | Carbs | Fat | Portions |
