@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- **Settings search:** on Obsidian 1.13+, Cal Track's settings show up in Obsidian's settings search. Older versions keep the same settings screen as before.
+- Clears the warnings from Obsidian's plugin review. No other change in behavior.
+
 ## 0.1.1
 
 - Pass Obsidian's release review: the keychain APIs (Obsidian 1.11.4+) are now guarded with `requireApiVersion`. No change in behavior.
