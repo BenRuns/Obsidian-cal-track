@@ -1,5 +1,14 @@
 import { parseOffSearch, parseUsdaFood, parseUsdaSearch } from './food.js';
 
+/** @typedef {import('./types').Food} Food */
+/** @typedef {import('./types').HttpError} HttpError */
+/** @typedef {import('./types').HttpRequest} HttpRequest */
+/** @typedef {import('./types').OffProductJson} OffProductJson */
+/** @typedef {import('./types').SearchResult} SearchResult */
+/** @typedef {import('./types').SearchSettings} SearchSettings */
+/** @typedef {import('./types').UsdaFoodJson} UsdaFoodJson */
+/** @typedef {import('./types').UsdaSearchJson} UsdaSearchJson */
+
 // ─── Food database lookups ────────────────────────────────────────────────────
 //
 // `request` is Obsidian's requestUrl (it bypasses CORS and works on mobile);
@@ -21,7 +30,12 @@ const { version } = manifest;
 // instead of blocking the app's traffic.
 const USER_AGENT = `ObsidianCalTrack/${version} (5211586+BenRuns@users.noreply.github.com; https://github.com/BenRuns/Obsidian-cal-track)`;
 
+/**
+ * @param {string} message
+ * @param {string} code
+ */
 function httpError(message, code) {
+  /** @type {HttpError} */
   const err = new Error(message);
   err.code = code;
   return err;
@@ -36,6 +50,22 @@ const USDA_RETRIES = 3;
 const USDA_RETRY_BASE_MS = 500;
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 
+// The reason an httpError gave, and the message, for any thrown value.
+/** @param {unknown} e */
+function errorCode(e) {
+  return typeof e === 'object' && e !== null && 'code' in e ? e.code : undefined;
+}
+
+/** @param {unknown} e */
+function errorMessage(e) {
+  if (e instanceof Error) return e.message;
+  return typeof e === 'string' ? e : 'unknown error';
+}
+
+/**
+ * @param {number} retries
+ * @param {number} baseMs
+ */
 function backoffDelays(retries, baseMs) {
   return Array.from({ length: retries }, (_, i) => baseMs * 2 ** i);
 }
@@ -44,16 +74,25 @@ const USDA_RETRY_DELAYS_MS = backoffDelays(USDA_RETRIES, USDA_RETRY_BASE_MS);
 
 // Up to 50% random jitter, so clients that failed together don't all retry
 // at the same instant. A zero wait (tests) skips the timer altogether.
+/** @param {number} ms */
 const pause = (ms) =>
   ms > 0
     ? new Promise((resolve) => window.setTimeout(resolve, ms * (1 + Math.random() * 0.5)))
     : Promise.resolve();
 
 // body: sent as a JSON POST instead of a GET.
+/**
+ * @param {HttpRequest} request
+ * @param {string} url
+ * @param {Record<string, string> | undefined} headers
+ * @param {{ notFoundOk?: boolean, retryDelays?: number[], body?: unknown }} [options]
+ * @returns {Promise<unknown>}
+ */
 async function getJson(request, url, headers, { notFoundOk = false, retryDelays = [], body } = {}) {
   const req = body
     ? { url, method: 'POST', contentType: 'application/json', body: JSON.stringify(body) }
     : { url, method: 'GET' };
+  /** @type {Awaited<ReturnType<HttpRequest>>} */
   let res;
   for (let attempt = 0; ; attempt++) {
     const canRetry = attempt < retryDelays.length;
@@ -89,6 +128,12 @@ async function getJson(request, url, headers, { notFoundOk = false, retryDelays 
 // USDA ranks by relevance across all data types; generic foods (Foundation /
 // SR Legacy / Survey) are moved ahead of branded ones so "banana" lists the
 // fruit before banana-flavoured candy. Relevance order is kept within each.
+/**
+ * @param {HttpRequest} request
+ * @param {string} query
+ * @param {string} apiKey
+ * @param {{ branded?: boolean, pageSize?: number, retryDelays?: number[] }} [options]
+ */
 async function searchUsda(
   request,
   query,
@@ -100,25 +145,38 @@ async function searchUsda(
   // A POST with a JSON body: USDA's server rejects a GET whose query string
   // has the encoded parentheses of "Survey (FNDDS)" (HTTP 400).
   const params = new URLSearchParams({ api_key: apiKey || 'DEMO_KEY' });
-  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
-    retryDelays,
-    body: { query, pageSize, dataType: types },
-  });
+  const json = /** @type {UsdaSearchJson} */ (
+    await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
+      retryDelays,
+      body: { query, pageSize, dataType: types },
+    })
+  );
   const foods = parseUsdaSearch(json);
   return [...foods.filter((f) => !f.brand), ...foods.filter((f) => f.brand)];
 }
 
 // Full record — has foodPortions, which search results sometimes lack.
+/**
+ * @param {HttpRequest} request
+ * @param {string} fdcId
+ * @param {string} apiKey
+ * @param {{ retryDelays?: number[] }} [options]
+ */
 async function getUsdaFood(request, fdcId, apiKey, { retryDelays = USDA_RETRY_DELAYS_MS } = {}) {
   const params = new URLSearchParams({ api_key: apiKey || 'DEMO_KEY' });
-  const json = await getJson(request, `${USDA_BASE}/food/${fdcId}?${params}`, undefined, {
-    retryDelays,
-  });
+  const json = /** @type {UsdaFoodJson} */ (
+    await getJson(request, `${USDA_BASE}/food/${fdcId}?${params}`, undefined, { retryDelays })
+  );
   return parseUsdaFood(json);
 }
 
 // Search-a-licious first; the classic search only if it fails for a reason
 // other than rate limiting (being rate limited, a second request won't help).
+/**
+ * @param {HttpRequest} request
+ * @param {string} query
+ * @param {{ pageSize?: number }} [options]
+ */
 async function searchOff(request, query, { pageSize = 15 } = {}) {
   const headers = { 'User-Agent': USER_AGENT };
   try {
@@ -127,10 +185,12 @@ async function searchOff(request, query, { pageSize = 15 } = {}) {
       page_size: String(pageSize),
       fields: OFF_FIELDS,
     });
-    const json = await getJson(request, `${OFF_SEARCH}/search?${params}`, headers);
+    const json = /** @type {{ hits?: OffProductJson[] } | null} */ (
+      await getJson(request, `${OFF_SEARCH}/search?${params}`, headers)
+    );
     return parseOffSearch({ products: json?.hits });
   } catch (e) {
-    if (e?.code === 'rate_limited') throw e;
+    if (errorCode(e) === 'rate_limited') throw e;
   }
   const params = new URLSearchParams({
     search_terms: query,
@@ -140,13 +200,16 @@ async function searchOff(request, query, { pageSize = 15 } = {}) {
     page_size: String(pageSize),
     fields: OFF_FIELDS,
   });
-  const json = await getJson(request, `${OFF_BASE}/cgi/search.pl?${params}`, headers);
+  const json = /** @type {import('./types').OffSearchJson} */ (
+    await getJson(request, `${OFF_BASE}/cgi/search.pl?${params}`, headers)
+  );
   return parseOffSearch(json);
 }
 
 // ─── Barcodes ─────────────────────────────────────────────────────────────────
 
 // UPC-A (12), EAN-8/13, GTIN-14. Spaces and dashes from a label are allowed.
+/** @param {string | null | undefined} query */
 function asBarcode(query) {
   const digits = String(query || '').replace(/[\s-]/g, '');
   return /^\d{8,14}$/.test(digits) ? digits : null;
@@ -154,21 +217,32 @@ function asBarcode(query) {
 
 // The same product can be written as UPC-A (12 digits), EAN-13 with a
 // leading 0, or GTIN-14 with leading zeros. Compare without them.
+/**
+ * @param {string | undefined} a
+ * @param {string | undefined} b
+ */
 function sameBarcode(a, b) {
+  /** @param {string | undefined} s */
   const strip = (s) => String(s || '').replace(/^0+/, '');
   return strip(a) !== '' && strip(a) === strip(b);
 }
 
+/**
+ * @param {HttpRequest} request
+ * @param {string} code
+ */
 async function lookupOffBarcode(request, code) {
   // Open Food Facts keys products by EAN-13; a 12-digit UPC-A is the same
   // number with a leading 0, so try that form if the typed one misses.
   const tries = code.length === 12 ? [code, `0${code}`] : [code];
   for (const c of tries) {
-    const json = await getJson(
-      request,
-      `${OFF_BASE}/api/v2/product/${c}.json?fields=${OFF_FIELDS}`,
-      { 'User-Agent': USER_AGENT },
-      { notFoundOk: true },
+    const json = /** @type {{ status?: number, product?: OffProductJson } | null} */ (
+      await getJson(
+        request,
+        `${OFF_BASE}/api/v2/product/${c}.json?fields=${OFF_FIELDS}`,
+        { 'User-Agent': USER_AGENT },
+        { notFoundOk: true },
+      )
     );
     if (json?.status === 1 && json.product) {
       return parseOffSearch({ products: [{ code: c, ...json.product }] });
@@ -179,6 +253,12 @@ async function lookupOffBarcode(request, code) {
 
 // USDA's Branded foods carry gtinUpc; a search for the number finds them,
 // then only exact barcode matches are kept.
+/**
+ * @param {HttpRequest} request
+ * @param {string} code
+ * @param {string} apiKey
+ * @param {{ retryDelays?: number[] }} [options]
+ */
 async function lookupUsdaBarcode(
   request,
   code,
@@ -191,9 +271,9 @@ async function lookupUsdaBarcode(
     pageSize: '10',
     dataType: 'Branded',
   });
-  const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
-    retryDelays,
-  });
+  const json = /** @type {UsdaSearchJson | null} */ (
+    await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, { retryDelays })
+  );
   const hits = (json?.foods || []).filter((f) => sameBarcode(f.gtinUpc, code));
   return parseUsdaSearch({ foods: hits });
 }
@@ -201,8 +281,15 @@ async function lookupUsdaBarcode(
 // Runs the enabled sources in parallel. One failing source doesn't hide the
 // other's results; errors are returned alongside.
 // A query that is just a barcode is looked up by barcode instead of as text.
+/**
+ * @param {HttpRequest} request
+ * @param {string} query
+ * @param {SearchSettings} settings
+ * @returns {Promise<SearchResult>}
+ */
 async function searchAll(request, query, settings) {
   const code = asBarcode(query);
+  /** @type {[string, Promise<Food[]>][]} */
   const jobs = [];
   if (settings.useUsda) {
     const job = code
@@ -217,14 +304,19 @@ async function searchAll(request, query, settings) {
     ]);
   }
   const settled = await Promise.allSettled(jobs.map(([, p]) => p));
+  /** @type {Food[]} */
   const foods = [];
+  /** @type {string[]} */
   const errors = [];
+  /** @type {string[]} */
   const rateLimited = [];
   settled.forEach((r, i) => {
     if (r.status === 'fulfilled') foods.push(...r.value);
     else {
-      errors.push(`${jobs[i][0]}: ${r.reason?.message || r.reason}`);
-      if (r.reason?.code === 'rate_limited') rateLimited.push(jobs[i][0]);
+      /** @type {unknown} */
+      const reason = r.reason;
+      errors.push(`${jobs[i][0]}: ${errorMessage(reason)}`);
+      if (errorCode(reason) === 'rate_limited') rateLimited.push(jobs[i][0]);
     }
   });
   return { foods, errors, barcode: code, rateLimited };
@@ -233,6 +325,8 @@ async function searchAll(request, query, settings) {
 export {
   asBarcode,
   backoffDelays,
+  errorCode,
+  errorMessage,
   getUsdaFood,
   lookupOffBarcode,
   lookupUsdaBarcode,

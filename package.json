@@ -8,12 +8,13 @@
     "lint": "biome check src test",
     "test": "node --test test/*.test.js",
     "demo": "node demo/build.js",
-    "lint:obsidian": "eslint ."
+    "lint:obsidian": "eslint . --max-warnings=0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.5",
-    "eslint-plugin-obsidianmd": "^0.4.2"
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.14.4"
   }
 }

@@ -7,6 +7,10 @@
 //     volume-based portion the database gave us (e.g. "1 cup = 150 g")
 //   - named portions ("medium", "slice", "serving") use their gram weight
 
+/** @typedef {import('./types').Food} Food */
+/** @typedef {Pick<Food, 'portions' | 'density' | 'noMass'>} Measurable */
+
+/** @type {Record<string, number>} */
 const MASS_UNITS = {
   g: 1,
   mg: 0.001,
@@ -15,6 +19,7 @@ const MASS_UNITS = {
   lb: 453.59237,
 };
 
+/** @type {Record<string, number>} */
 const VOLUME_UNITS = {
   ml: 1,
   l: 1000,
@@ -24,6 +29,7 @@ const VOLUME_UNITS = {
   cup: 236.5882365,
 };
 
+/** @type {Record<string, string>} */
 const ALIASES = {
   gram: 'g',
   grams: 'g',
@@ -61,6 +67,7 @@ const ALIASES = {
   servings: 'serving',
 };
 
+/** @param {string | null | undefined} unit */
 function normalizeUnit(unit) {
   const u = String(unit || '')
     .trim()
@@ -69,18 +76,24 @@ function normalizeUnit(unit) {
   return ALIASES[u] || u;
 }
 
+/** @param {string | null | undefined} unit */
 function isMassUnit(unit) {
   return Object.hasOwn(MASS_UNITS, normalizeUnit(unit));
 }
 
+/** @param {string | null | undefined} unit */
 function isVolumeUnit(unit) {
   return Object.hasOwn(VOLUME_UNITS, normalizeUnit(unit));
 }
 
 // Grams per millilitre, derived from the first volume-based portion. Returns
 // null when the food has no volume portion (so cups/tbsp aren't offered).
+/**
+ * @param {Measurable} food
+ * @returns {number | null}
+ */
 function densityOf(food) {
-  if (food.density > 0) return food.density;
+  if (food.density && food.density > 0) return food.density;
   for (const p of food.portions || []) {
     const u = normalizeUnit(p.unit);
     if (isVolumeUnit(u) && p.amount > 0 && p.grams > 0) {
@@ -90,12 +103,22 @@ function densityOf(food) {
   return null;
 }
 
+/**
+ * @param {Measurable} food
+ * @param {string} unit
+ */
 function findPortion(food, unit) {
   const u = normalizeUnit(unit);
   return (food.portions || []).find((p) => normalizeUnit(p.unit) === u && p.grams > 0);
 }
 
 // Converts qty of unit into grams for this food, or null if impossible.
+/**
+ * @param {Measurable} food
+ * @param {unknown} qty
+ * @param {string} unit
+ * @returns {number | null}
+ */
 function toGrams(food, qty, unit) {
   const q = Number(qty);
   if (!Number.isFinite(q) || q < 0) return null;
@@ -115,9 +138,12 @@ function toGrams(food, qty, unit) {
 // Units to offer in the picker for this food: named portions first (they're
 // the most natural — "1 medium banana"), then mass, then volume if we know
 // the density.
+/** @param {Measurable} food */
 function unitsFor(food) {
   const seen = new Set();
+  /** @type {string[]} */
   const out = [];
+  /** @param {string} u */
   const add = (u) => {
     const n = normalizeUnit(u);
     if (!n || seen.has(n)) return;
