@@ -3,6 +3,7 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": false,
+    "strict": true,
     "noEmit": true,
     "target": "ES2022",
     "module": "Preserve",

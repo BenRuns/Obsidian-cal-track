@@ -15,7 +15,9 @@ const COLUMN_ALIASES = {
 };
 
 /** @typedef {keyof typeof COLUMN_ALIASES} ColumnKey */
-/** @typedef {{ start: number, end: number, cols: Partial<Record<ColumnKey, number>>, width: number }} FoodTable */
+// A food table always has Food and calories columns; the rest are optional.
+/** @typedef {Partial<Record<ColumnKey, number>> & { food: number, kcal: number }} FoodColumns */
+/** @typedef {{ start: number, end: number, cols: FoodColumns, width: number }} FoodTable */
 
 // ─── Rows ─────────────────────────────────────────────────────────────────────
 
@@ -127,7 +129,12 @@ function findTables(lines) {
       if (key && cols[key] === undefined) cols[key] = idx;
     });
     if (cols.food !== undefined && cols.kcal !== undefined) {
-      tables.push({ start, end, cols, width: headers.length });
+      tables.push({
+        start,
+        end,
+        cols: { ...cols, food: cols.food, kcal: cols.kcal },
+        width: headers.length,
+      });
     }
     i = end + 1;
   }
