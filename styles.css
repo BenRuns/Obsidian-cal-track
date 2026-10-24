@@ -1,12 +1,15 @@
 /* ─── Food search ─────────────────────────────────────────────── */
 
+/* The buttons wrap onto a second line when the box would get narrower than
+   about 14em (phones), and the box then takes the whole first line. */
 .cal-track-search-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .cal-track-search-row input {
-  flex: 1;
+  flex: 1 1 14em;
   min-width: 0;
 }
 
