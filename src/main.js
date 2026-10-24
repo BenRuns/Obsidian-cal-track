@@ -87,7 +87,7 @@ class CalTrackSettingTab extends PluginSettingTab {
     const about = (...extra) =>
       createFragment((f) => {
         f.appendText(
-          'Optional. Without one the shared DEMO_KEY is used (30 lookups an hour, 50 a day). ',
+          'Optional. Without one the shared DEMO_KEY is used, which allows only about 10 lookups an hour. ',
         );
         f.createEl('a', { text: 'Get a free key', href: USDA_SIGNUP_URL });
         f.appendText(' — it takes about a minute.');
@@ -379,7 +379,7 @@ class FoodSearchModal extends Modal {
 
   // Typing filters My foods and Recent only. Online searches run on Enter or
   // the Search button: Open Food Facts allows 10 searches a minute and asks
-  // apps not to search as you type, and USDA's DEMO_KEY allows 50 a day.
+  // apps not to search as you type, and USDA's DEMO_KEY allows about 10 an hour.
   onType() {
     window.clearTimeout(this.timer);
     this.searchSeq++; // results for the old text no longer apply

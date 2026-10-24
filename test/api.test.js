@@ -6,14 +6,17 @@ const { searchUsda, searchAll } = require('../src/api');
 
 function stub(routes) {
   const calls = [];
-  const request = async ({ url }) => {
+  const requests = [];
+  const request = async (req) => {
+    const { url } = req;
     calls.push(url);
+    requests.push(req);
     for (const [prefix, res] of Object.entries(routes)) {
       if (url.startsWith(prefix)) return typeof res === 'function' ? res(url) : res;
     }
     return { status: 404, json: null };
   };
-  return { request, calls };
+  return { request, calls, requests };
 }
 
 const usdaOk = {
@@ -24,13 +27,19 @@ const usdaOk = {
 };
 
 test('USDA search uses DEMO_KEY by default and the given key otherwise', async () => {
-  const { request, calls } = stub({ 'https://api.nal.usda.gov': usdaOk });
+  const { request, calls, requests } = stub({ 'https://api.nal.usda.gov': usdaOk });
   const foods = await searchUsda(request, 'egg', '');
   assert.equal(foods[0].name, 'Egg');
   const url = new URL(calls[0]);
   assert.equal(url.searchParams.get('api_key'), 'DEMO_KEY');
-  assert.equal(url.searchParams.get('query'), 'egg');
-  assert.match(url.searchParams.get('dataType'), /^Foundation,SR Legacy/);
+  // The criteria go in a JSON body: USDA's server rejects "Survey (FNDDS)"'s
+  // encoded parentheses in a query string with HTTP 400.
+  assert.equal(requests[0].method, 'POST');
+  assert.equal(requests[0].contentType, 'application/json');
+  assert.doesNotMatch(calls[0], /%28|\(/);
+  const body = JSON.parse(requests[0].body);
+  assert.equal(body.query, 'egg');
+  assert.deepEqual(body.dataType, ['Foundation', 'SR Legacy', 'Survey (FNDDS)', 'Branded']);
 
   await searchUsda(request, 'egg', 'abc123');
   assert.equal(new URL(calls[1]).searchParams.get('api_key'), 'abc123');

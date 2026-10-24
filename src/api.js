@@ -45,12 +45,16 @@ const USDA_RETRY_DELAYS_MS = backoffDelays(USDA_RETRIES, USDA_RETRY_BASE_MS);
 // at the same instant.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms * (1 + Math.random() * 0.5)));
 
-async function getJson(request, url, headers, { notFoundOk = false, retryDelays = [] } = {}) {
+// body: sent as a JSON POST instead of a GET.
+async function getJson(request, url, headers, { notFoundOk = false, retryDelays = [], body } = {}) {
+  const req = body
+    ? { url, method: 'POST', contentType: 'application/json', body: JSON.stringify(body) }
+    : { url, method: 'GET' };
   let res;
   for (let attempt = 0; ; attempt++) {
     const canRetry = attempt < retryDelays.length;
     try {
-      res = await request({ url, method: 'GET', headers, throw: false });
+      res = await request({ ...req, headers, throw: false });
     } catch (e) {
       // requestUrl rejects on network errors even with throw: false.
       if (!canRetry) throw e;
@@ -89,14 +93,12 @@ async function searchUsda(
 ) {
   const types = ['Foundation', 'SR Legacy', 'Survey (FNDDS)'];
   if (branded) types.push('Branded');
-  const params = new URLSearchParams({
-    api_key: apiKey || 'DEMO_KEY',
-    query,
-    pageSize: String(pageSize),
-    dataType: types.join(','),
-  });
+  // A POST with a JSON body: USDA's server rejects a GET whose query string
+  // has the encoded parentheses of "Survey (FNDDS)" (HTTP 400).
+  const params = new URLSearchParams({ api_key: apiKey || 'DEMO_KEY' });
   const json = await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
     retryDelays,
+    body: { query, pageSize, dataType: types },
   });
   const foods = parseUsdaSearch(json);
   return [...foods.filter((f) => !f.brand), ...foods.filter((f) => f.brand)];

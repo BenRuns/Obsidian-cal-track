@@ -84,11 +84,11 @@ Type or paste the number under a barcode (UPC-A, EAN-8/13, GTIN-14; spaces and d
 
 | Source | Good for | Key |
 |--------|----------|-----|
-| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Generic foods (banana, chicken breast) and US brands | Optional. The shared `DEMO_KEY` allows 30 lookups an hour and 50 a day; a [free personal key](#getting-a-usda-key) gives 1,000 an hour. |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Generic foods (banana, chicken breast) and US brands | Optional. Without one, Cal Track uses the shared `DEMO_KEY`, which USDA currently limits to 10 lookups an hour per network (its docs say 30 an hour, 50 a day). A [free personal key](#getting-a-usda-key) gives 1,000 an hour. |
 | [Open Food Facts](https://world.openfoodfacts.org/) | Packaged foods worldwide | None |
 | **My foods** | Your own foods and portions, kept in a note in your vault | — |
 
-Typing filters **My foods** and recently used foods instantly. To search USDA and Open Food Facts, press **Enter** or tap **Search**. Results show under your own foods. Online searches don't run as you type: Open Food Facts allows 10 searches a minute and asks apps not to search on every keystroke, and USDA's shared `DEMO_KEY` allows 50 lookups a day. A complete 12- or 13-digit barcode is the exception (see Barcodes).
+Typing filters **My foods** and recently used foods instantly. To search USDA and Open Food Facts, press **Enter** or tap **Search**. Results show under your own foods. Online searches don't run as you type: Open Food Facts allows 10 searches a minute and asks apps not to search on every keystroke, and USDA's shared `DEMO_KEY` allows only about 10 lookups an hour. A complete 12- or 13-digit barcode is the exception (see Barcodes).
 
 **Caching:** a search is cached for 10 minutes, and a food's full portion list (the extra request USDA needs for "1 medium", "1 cup", etc.) is cached for an hour — so searching again, reopening "Adjust" on the same food, or picking the same food twice doesn't cost another request. If a source returns a 429 (rate limited), it's skipped automatically for the next 15 minutes rather than retried on every search; the status line says how long is left. The `DEMO_KEY` quota is shared across every user of this plugin without their own key, so it can already be used up before you've searched anything yourself — a [personal key](https://fdc.nal.usda.gov/api-key-signup) isn't shared and clears any active cooldown as soon as you save it.
 
