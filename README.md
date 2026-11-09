@@ -169,6 +169,24 @@ The row's numbers are what gets logged. The ingredient list is only used when yo
 
 ---
 
+### Exercise
+
+If you import workouts with [Physical Activity Importer](https://github.com/BenRuns/physical-activity-importer), each day's log also shows **Exercise** and **Net** rows: the calories burned in that day's activities, and how many of them were *active*, burned above resting.
+
+```
+Total        1850
+Exercise      612 (540 active)
+Net          1310   = 1850 − 540
+Goal         2200
+Remaining     890   = 2200 − 1850 + 540
+```
+
+Net is what you ate less the active calories: your intake once exercise is taken into account.
+
+With a goal, Remaining adds back only the active calories. Your goal already allows for what you burn at rest, so adding back the full figure would count that twice.
+
+Cal Track reads any note with `estimated_calories`, `active_calories` and `start_date` properties, and counts it on the local date of `start_date`. Physical Activity Importer writes these for Garmin and FIT imports once you set your details under its Calories settings. Activities without an estimate (such as Strava imports, which only have the device's `calories`) aren't counted. Turn **Exercise** off in settings to hide both rows.
+
 ## Network use
 
 Cal Track connects to two food databases, and only when you look up a food. You can turn either one off in settings, and then it isn't contacted at all.
@@ -190,6 +208,7 @@ Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or a
 - **My foods note**: where your food database lives
 - **Macro columns**: show Protein / Carbs / Fat in daily logs
 - **Daily calorie goal**: adds Goal and Remaining rows
+- **Exercise**: shows calories burned from activity notes, and adds the active part back to Remaining (on by default; see [Exercise](#exercise))
 - **Meals**: the meal labels to choose from, comma-separated, in display order. Blank turns meals off.
 - **Clear recent foods**: forgets cached lookups (My foods is untouched)
 
