@@ -26,6 +26,7 @@ import {
   notePath,
   withLogBlock,
 } from './daily.js';
+import { calorieEstimate, exerciseFor } from './exercise.js';
 import { displayName, makeCustomFood, nutrientsFor } from './food.js';
 import { newFileLines, parseFoodFile, removeFood, upsertFood, withPortion } from './foodfile.js';
 import {
@@ -89,6 +90,7 @@ const DEFAULT_SETTINGS = {
   useOff: true,
   macros: true, // show Protein / Carbs / Fat columns in daily logs
   dailyGoal: 0, // kcal; 0 = no Goal / Remaining rows
+  exercise: true, // show calories burned from activity notes, and add the active part back to Remaining
   foodsFile: 'Cal Track/Foods.md', // your own food database, a note in the vault
   logFile: 'Cal Track/log.csv', // the food log: one row per food eaten
   meals: 'Breakfast, Lunch, Dinner, Snack', // offered when logging; blank = no meal labels
@@ -318,6 +320,21 @@ class CalTrackSettingTab extends PluginSettingTab {
                   this.plugin.logChanged();
                 });
               }),
+          },
+          {
+            name: 'Exercise',
+            desc:
+              'Shows calories burned, and Net (eaten less active calories), from activity notes with estimated_calories and active_calories ' +
+              'properties, such as Physical Activity Importer writes, on the day of their start_date. ' +
+              'With a goal, the active calories (burned above resting) are added back to Remaining.',
+            render: (setting) =>
+              setting.addToggle((t) =>
+                t.setValue(s.exercise).onChange(async (v) => {
+                  s.exercise = v;
+                  await save();
+                  this.plugin.logChanged();
+                }),
+              ),
           },
           {
             name: 'Meals',
@@ -1217,7 +1234,7 @@ class DailyLogView extends MarkdownRenderChild {
     const seq = ++this.seq;
     const entries = entriesFor(await this.plugin.getLog(), this.date);
     if (seq !== this.seq) return; // a newer render started while this one read the log
-    const { macros, dailyGoal } = this.plugin.settings;
+    const { macros, dailyGoal, exercise: showExercise } = this.plugin.settings;
     /** @type {Macro[]} */
     const keys = macros ? ['kcal', 'protein', 'carbs', 'fat'] : ['kcal'];
     const el = this.containerEl;
@@ -1266,14 +1283,46 @@ class DailyLogView extends MarkdownRenderChild {
       'Total',
       Object.fromEntries(keys.map((k) => [k, formatNumber(sum[k] ?? 0, DECIMALS[k])])),
     );
+    const exercise = showExercise ? this.plugin.exerciseFor(this.date) : null;
+    if (exercise?.activities.length) {
+      this.renderExerciseRow(foot, exercise, keys);
+      // What you ate less what exercise added: the day's net intake.
+      summary('Net', { kcal: formatNumber((sum.kcal ?? 0) - exercise.active, 0) });
+    }
     if (dailyGoal > 0) {
       summary('Goal', { kcal: String(dailyGoal) });
-      summary('Remaining', { kcal: formatNumber(dailyGoal - (sum.kcal ?? 0), 0) });
+      summary('Remaining', {
+        kcal: formatNumber(dailyGoal - (sum.kcal ?? 0) + (exercise?.active ?? 0), 0),
+      });
     }
 
     const add = el.createEl('button', { text: 'Add food', cls: 'cal-track-add' });
     setIcon(add.createSpan({ cls: 'cal-track-add-icon' }), 'plus');
     add.addEventListener('click', () => this.plugin.addFood(this.date));
+  }
+
+  // Calories burned, with the active part (what's added back to Remaining)
+  // and which activities they're from.
+  /**
+   * @param {HTMLElement} foot
+   * @param {import('./exercise.js').Exercise} exercise
+   * @param {Macro[]} keys
+   */
+  renderExerciseRow(foot, { kcal, active, activities }, keys) {
+    const tr = foot.createEl('tr', { cls: 'cal-track-exercise-row' });
+    tr.createEl('th', { text: 'Exercise' });
+    tr.createEl('td', {
+      text: activities.length === 1 ? activities[0].name : `${activities.length} activities`,
+      cls: 'cal-track-exercise-names',
+      attr: { title: activities.map((a) => a.name).join('\n') },
+    });
+    const cell = tr.createEl('td', { text: formatNumber(kcal, 0), cls: 'cal-track-num' });
+    cell.createSpan({
+      text: ` (${formatNumber(active, 0)} active)`,
+      cls: 'cal-track-exercise-active',
+    });
+    for (let i = 1; i < keys.length; i++) tr.createEl('td');
+    tr.createEl('td');
   }
 
   /**
@@ -1343,6 +1392,10 @@ class CalTrackPlugin extends Plugin {
   rateLimitCooldowns = {};
   /** @type {Set<DailyLogView>} */
   views = new Set();
+  // Activity notes counted as exercise, so their deletion or renaming
+  // updates the daily logs that showed them.
+  /** @type {Set<string>} */
+  exercisePaths = new Set();
 
   async onload() {
     await this.loadAll();
@@ -1419,6 +1472,41 @@ class CalTrackPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', onChange));
     this.registerEvent(this.app.vault.on('create', onChange));
     this.registerEvent(this.app.vault.on('rename', onChange));
+
+    // Activity notes (e.g. new imports, or edited calories) update the
+    // Exercise row of every open daily log.
+    this.registerEvent(
+      this.app.metadataCache.on('changed', (file, _data, cache) => {
+        if (calorieEstimate(cache.frontmatter) || this.exercisePaths.has(file.path))
+          this.logChanged();
+      }),
+    );
+    /**
+     * @param {import('obsidian').TAbstractFile} file
+     * @param {string} [oldPath]
+     */
+    const onActivityGone = (file, oldPath) => {
+      if (this.exercisePaths.has(file.path) || (oldPath && this.exercisePaths.has(oldPath)))
+        this.logChanged();
+    };
+    this.registerEvent(this.app.vault.on('delete', onActivityGone));
+    this.registerEvent(this.app.vault.on('rename', onActivityGone));
+  }
+
+  // The day's exercise, from the properties of activity notes.
+  /** @param {string} date YYYY-MM-DD */
+  exerciseFor(date) {
+    const notes = this.app.vault.getMarkdownFiles().map((file) => ({
+      path: file.path,
+      frontmatter: this.app.metadataCache.getFileCache(file)?.frontmatter,
+    }));
+    const exercise = exerciseFor(notes, date, (startDate) => {
+      if (startDate === null || startDate === undefined || startDate === '') return null;
+      const m = moment(String(startDate), moment.ISO_8601, true);
+      return m.isValid() ? m.format(DATE_KEY) : null;
+    });
+    for (const a of exercise.activities) this.exercisePaths.add(a.path);
+    return exercise;
   }
 
   // ── Persistence ──

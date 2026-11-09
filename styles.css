@@ -247,6 +247,16 @@
   }
 }
 
+.cal-track-exercise-active,
+.cal-track-exercise-names {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.cal-track-exercise-active {
+  white-space: nowrap;
+}
+
 .cal-track-empty {
   color: var(--text-muted);
   font-style: italic;
