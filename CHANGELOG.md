@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - **Exercise:** daily logs show the calories burned in that day's activities, from activity notes with `estimated_calories` and `active_calories` properties (as [Physical Activity Importer](https://github.com/BenRuns/physical-activity-importer) writes them), and a **Net** row: what you ate less the active calories. With a goal, Remaining adds back the active calories only, since the goal already covers resting burn. On by default; turn **Exercise** off in settings to hide it.
 
