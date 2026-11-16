@@ -257,6 +257,12 @@
   white-space: nowrap;
 }
 
+.cal-track-training {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-top: var(--size-4-2);
+}
+
 .cal-track-empty {
   color: var(--text-muted);
   font-style: italic;

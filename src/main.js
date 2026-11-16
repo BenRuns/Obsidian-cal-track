@@ -44,6 +44,7 @@ import {
 } from './logcsv.js';
 import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from './lookup.js';
 import { formatNumber } from './table.js';
+import { asGuidance, goalFor } from './training.js';
 import { normalizeUnit, toGrams, unitsFor } from './units.js';
 
 /** @typedef {import('obsidian').App} App */
@@ -70,7 +71,9 @@ import { normalizeUnit, toGrams, unitsFor } from './units.js';
 /**
  * @typedef {{
  *   internalPlugins?: { getPluginById?: (id: string) => { enabled?: boolean, instance?: { options?: DailyNoteOptions } } | null },
- *   plugins?: { getPlugin?: (id: string) => { settings?: PeriodicNotesSettings } | null },
+ *   plugins?: {
+ *     getPlugin?: (id: string) => { settings?: PeriodicNotesSettings, api?: { fuel?: (date: string) => unknown } } | null,
+ *   },
  * }} PrivateApp
  */
 
@@ -90,6 +93,8 @@ const DEFAULT_SETTINGS = {
   useOff: true,
   macros: true, // show Protein / Carbs / Fat columns in daily logs
   dailyGoal: 0, // kcal; 0 = no Goal / Remaining rows
+  maintenanceGoal: 0, // kcal; the goal on training days Marathon Trainer says not to diet (0 = off)
+  training: true, // read eating guidance from a Marathon Trainer plan
   exercise: true, // show calories burned from activity notes, and add the active part back to Remaining
   foodsFile: 'Cal Track/Foods.md', // your own food database, a note in the vault
   logFile: 'Cal Track/log.csv', // the food log: one row per food eaten
@@ -316,6 +321,36 @@ class CalTrackSettingTab extends PluginSettingTab {
                 t.setValue(String(s.dailyGoal || 0)).onChange(async (v) => {
                   const n = Number(v);
                   s.dailyGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+                  await save();
+                  this.plugin.logChanged();
+                });
+              }),
+          },
+          {
+            name: 'Training plan',
+            desc:
+              "With Marathon Trainer, show each day's eating guidance from your training plan. " +
+              'A deficit is only for Base weeks; Build, Peak and Taper weeks, carb-loading and race day use maintenance calories.',
+            render: (setting) =>
+              setting.addToggle((t) =>
+                t.setValue(s.training).onChange(async (v) => {
+                  s.training = v;
+                  await save();
+                  this.plugin.logChanged();
+                }),
+              ),
+          },
+          {
+            name: 'Maintenance calories',
+            desc:
+              "Your goal on training days when you shouldn't diet (see Training plan). " +
+              'Leave at 0 to keep the daily goal and only show the guidance.',
+            render: (setting) =>
+              setting.addText((t) => {
+                t.inputEl.type = 'number';
+                t.setValue(String(s.maintenanceGoal || 0)).onChange(async (v) => {
+                  const n = Number(v);
+                  s.maintenanceGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
                   await save();
                   this.plugin.logChanged();
                 });
@@ -1233,8 +1268,10 @@ class DailyLogView extends MarkdownRenderChild {
   async render() {
     const seq = ++this.seq;
     const entries = entriesFor(await this.plugin.getLog(), this.date);
+    const guidance = await this.plugin.trainingFor(this.date);
     if (seq !== this.seq) return; // a newer render started while this one read the log
-    const { macros, dailyGoal, exercise: showExercise } = this.plugin.settings;
+    const { macros, dailyGoal, maintenanceGoal, exercise: showExercise } = this.plugin.settings;
+    const { goal, maintain } = goalFor(dailyGoal, maintenanceGoal, guidance);
     /** @type {Macro[]} */
     const keys = macros ? ['kcal', 'protein', 'carbs', 'fat'] : ['kcal'];
     const el = this.containerEl;
@@ -1289,12 +1326,13 @@ class DailyLogView extends MarkdownRenderChild {
       // What you ate less what exercise added: the day's net intake.
       summary('Net', { kcal: formatNumber((sum.kcal ?? 0) - exercise.active, 0) });
     }
-    if (dailyGoal > 0) {
-      summary('Goal', { kcal: String(dailyGoal) });
+    if (goal > 0) {
+      summary(maintain ? 'Goal (maintain)' : 'Goal', { kcal: String(goal) });
       summary('Remaining', {
-        kcal: formatNumber(dailyGoal - (sum.kcal ?? 0) + (exercise?.active ?? 0), 0),
+        kcal: formatNumber(goal - (sum.kcal ?? 0) + (exercise?.active ?? 0), 0),
       });
     }
+    if (guidance?.note) el.createDiv({ cls: 'cal-track-training', text: guidance.note });
 
     const add = el.createEl('button', { text: 'Add food', cls: 'cal-track-add' });
     setIcon(add.createSpan({ cls: 'cal-track-add-icon' }), 'plus');
@@ -1477,7 +1515,11 @@ class CalTrackPlugin extends Plugin {
     // Exercise row of every open daily log.
     this.registerEvent(
       this.app.metadataCache.on('changed', (file, _data, cache) => {
-        if (calorieEstimate(cache.frontmatter) || this.exercisePaths.has(file.path))
+        if (
+          calorieEstimate(cache.frontmatter) ||
+          this.exercisePaths.has(file.path) ||
+          (this.settings.training && cache.frontmatter?.['marathon-plan'] === true)
+        )
           this.logChanged();
       }),
     );
@@ -1491,6 +1533,20 @@ class CalTrackPlugin extends Plugin {
     };
     this.registerEvent(this.app.vault.on('delete', onActivityGone));
     this.registerEvent(this.app.vault.on('rename', onActivityGone));
+  }
+
+  // Eating guidance for a day from Marathon Trainer's plan, if it's installed
+  // and a plan covers the date. Any failure there just means no guidance.
+  /** @param {string} date YYYY-MM-DD */
+  async trainingFor(date) {
+    if (!this.settings.training) return null;
+    const fuel = privateApp(this.app).plugins?.getPlugin?.('marathon-trainer')?.api?.fuel;
+    if (typeof fuel !== 'function') return null;
+    try {
+      return asGuidance(await fuel(date));
+    } catch {
+      return null;
+    }
   }
 
   // The day's exercise, from the properties of activity notes.

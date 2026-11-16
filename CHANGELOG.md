@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Training plan:** with [Marathon Trainer](https://github.com/BenRuns/race-planner-running), daily logs show the plan's eating guidance for that day. Set **Maintenance calories** and the goal switches to maintenance outside Base weeks (Build, Peak, Taper, carb-loading and race day), shown as **Goal (maintain)**, so you don't diet through heavy training. Turn **Training plan** off in settings to ignore the plan.
+
 ## 0.2.0
 
 - **Exercise:** daily logs show the calories burned in that day's activities, from activity notes with `estimated_calories` and `active_calories` properties (as [Physical Activity Importer](https://github.com/BenRuns/physical-activity-importer) writes them), and a **Net** row: what you ate less the active calories. With a goal, Remaining adds back the active calories only, since the goal already covers resting burn. On by default; turn **Exercise** off in settings to hide it.

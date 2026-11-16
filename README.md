@@ -187,6 +187,25 @@ With a goal, Remaining adds back only the active calories. Your goal already all
 
 Cal Track reads any note with `estimated_calories`, `active_calories` and `start_date` properties, and counts it on the local date of `start_date`. Physical Activity Importer writes these for Garmin and FIT imports once you set your details under its Calories settings. Activities without an estimate (such as Strava imports, which only have the device's `calories`) aren't counted. Turn **Exercise** off in settings to hide both rows.
 
+### Training plan
+
+With [Marathon Trainer](https://github.com/BenRuns/race-planner-running) and an active plan, each day's log shows the plan's eating guidance under the table. Set **Maintenance calories** to have the goal follow it:
+
+| Plan days | Goal |
+|---|---|
+| Base weeks | Your daily calorie goal (a mild deficit is fine) |
+| Build, Peak and Taper weeks | Maintenance calories, shown as **Goal (maintain)** |
+| The 2 days before the race (carb-load) and race day | Maintenance calories |
+
+```
+Total            1850
+Goal (maintain)  2700
+Remaining         850
+Peak week: eat to maintain, no deficit
+```
+
+Dieting while mileage and intensity climb raises the risk of Relative Energy Deficiency in Sport (REDs), so a deficit is kept to Base weeks. If maintenance is lower than your daily goal, the daily goal is used. Without a plan for that day, or with **Training plan** turned off in settings, nothing changes. Marathon Trainer's [methodology](https://github.com/BenRuns/race-planner-running/blob/main/docs/methodology.md#5b-eating-and-weight) gives the sources.
+
 ## Network use
 
 Cal Track connects to two food databases, and only when you look up a food. You can turn either one off in settings, and then it isn't contacted at all.
@@ -208,6 +227,8 @@ Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or a
 - **My foods note**: where your food database lives
 - **Macro columns**: show Protein / Carbs / Fat in daily logs
 - **Daily calorie goal**: adds Goal and Remaining rows
+- **Training plan**: shows eating guidance from a Marathon Trainer plan (on by default; see [Training plan](#training-plan))
+- **Maintenance calories**: the goal on plan days when you shouldn't diet; 0 keeps the daily goal
 - **Exercise**: shows calories burned from activity notes, and adds the active part back to Remaining (on by default; see [Exercise](#exercise))
 - **Meals**: the meal labels to choose from, comma-separated, in display order. Blank turns meals off.
 - **Clear recent foods**: forgets cached lookups (My foods is untouched)
