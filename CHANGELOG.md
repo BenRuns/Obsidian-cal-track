@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Training plan:** with [Marathon Trainer](https://github.com/BenRuns/race-planner-running), daily logs show the plan's eating guidance for that day. Set **Maintenance calories** and the goal switches to maintenance outside Base weeks (Build, Peak, Taper, carb-loading and race day), shown as **Goal (maintain)**, so you don't diet through heavy training. Turn **Training plan** off in settings to ignore the plan.
+- **Guidance from other plugins:** other plugins can add a note to a day and mark it as a day not to diet, through `api.calTrackDay(date)`. Set **Maintenance calories** and the goal switches to it on those days, shown as **Goal (maintain)**, never below your daily goal. A training plan can use this so you don't diet through heavy training. Turn **Guidance from other plugins** off in settings to ignore it. See the README for the API.
 
 ## 0.2.0
 

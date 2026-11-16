@@ -257,7 +257,7 @@
   white-space: nowrap;
 }
 
-.cal-track-training {
+.cal-track-guidance {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   margin-top: var(--size-4-2);
