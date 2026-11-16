@@ -187,6 +187,44 @@ With a goal, Remaining adds back only the active calories. Your goal already all
 
 Cal Track reads any note with `estimated_calories`, `active_calories` and `start_date` properties, and counts it on the local date of `start_date`. Physical Activity Importer writes these for Garmin and FIT imports once you set your details under its Calories settings. Activities without an estimate (such as Strava imports, which only have the device's `calories`) aren't counted. Turn **Exercise** off in settings to hide both rows.
 
+### Guidance from other plugins
+
+Other plugins can add a note to a day and mark it as a day not to diet. A training-plan plugin, for example, can keep a deficit to easy weeks and ask for maintenance during heavy training, carb-loading and race day. Set **Maintenance calories** and, on those days, the goal switches to it:
+
+```
+Total            1850
+Goal (maintain)  2700
+Remaining         850
+Peak week: eat to maintain, no deficit
+```
+
+If maintenance is lower than your daily goal, the daily goal is used. With no plugin offering guidance, or with **Guidance from other plugins** turned off in settings, nothing changes.
+
+#### Maintenance calories
+
+Enter maintenance **before exercise**: what keeps your weight steady, not counting logged workouts. Like the daily goal, Remaining adds the day's active calories back, so including your runs here would count them twice.
+
+**Suggest** works it out from your log. It takes the days with food logged in the last 28 (at least 14 are needed), averages what you ate, and subtracts the average active calories from your activity notes. If your weight changed over those 28 days, enter the change and the estimate is corrected using about 7,700 kcal per kg (3,500 per lb). Days you only logged part of, and workouts without calorie estimates, pull the estimate down, so check it against your weight over the next few weeks.
+
+Without enough log yet, a formula gives a starting point. The Mifflin-St Jeor resting burn is 10 × kg + 6.25 × cm − 5 × age, then + 5 for men or − 161 for women. Multiply it by about 1.2 for a desk job, or 1.3–1.4 if you're on your feet a lot, for daily life without workouts. Formulas are often 10% or more off for one person.
+
+#### For plugin developers
+
+Cal Track asks every enabled plugin that has `api.calTrackDay` on its plugin instance:
+
+```js
+// In your plugin class
+api = {
+  // date: "YYYY-MM-DD". Return null for days you have nothing to say about.
+  calTrackDay: async (date) => ({ noDeficit: true, note: 'Peak week: eat to maintain, no deficit' }),
+};
+```
+
+- `noDeficit` (optional): `true` makes the goal the user's maintenance calories that day.
+- `note` (optional): one short line, shown under the food table.
+
+When your answers change, call `this.app.workspace.trigger('cal-track:refresh')` and open logs re-render. Cal Track waits up to 2 seconds for an answer and ignores errors and anything not in this shape.
+
 ## Network use
 
 Cal Track connects to two food databases, and only when you look up a food. You can turn either one off in settings, and then it isn't contacted at all.
@@ -208,6 +246,8 @@ Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or a
 - **My foods note**: where your food database lives
 - **Macro columns**: show Protein / Carbs / Fat in daily logs
 - **Daily calorie goal**: adds Goal and Remaining rows
+- **Guidance from other plugins**: shows other plugins' notes for a day, and uses maintenance calories on days they mark as not to diet (on by default; see [Guidance from other plugins](#guidance-from-other-plugins))
+- **Maintenance calories (before exercise)**: the goal on those days; 0 keeps the daily goal. **Suggest** estimates it from your log (see [Maintenance calories](#maintenance-calories))
 - **Exercise**: shows calories burned from activity notes, and adds the active part back to Remaining (on by default; see [Exercise](#exercise))
 - **Meals**: the meal labels to choose from, comma-separated, in display order. Blank turns meals off.
 - **Clear recent foods**: forgets cached lookups (My foods is untouched)

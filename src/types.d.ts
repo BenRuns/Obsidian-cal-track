@@ -65,6 +65,8 @@ export interface Settings {
   useOff: boolean;
   macros: boolean;
   dailyGoal: number;
+  maintenanceGoal: number;
+  dayGuidance: boolean;
   exercise: boolean;
   foodsFile: string;
   logFile: string;
