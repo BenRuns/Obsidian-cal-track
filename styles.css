@@ -257,6 +257,11 @@
   white-space: nowrap;
 }
 
+.cal-track-suggested {
+  font-weight: var(--font-semibold);
+  margin-top: var(--size-4-1);
+}
+
 .cal-track-guidance {
   color: var(--text-muted);
   font-size: var(--font-ui-small);

@@ -200,6 +200,14 @@ Peak week: eat to maintain, no deficit
 
 If maintenance is lower than your daily goal, the daily goal is used. With no plugin offering guidance, or with **Guidance from other plugins** turned off in settings, nothing changes.
 
+#### Maintenance calories
+
+Enter maintenance **before exercise**: what keeps your weight steady, not counting logged workouts. Like the daily goal, Remaining adds the day's active calories back, so including your runs here would count them twice.
+
+**Suggest** works it out from your log. It takes the days with food logged in the last 28 (at least 14 are needed), averages what you ate, and subtracts the average active calories from your activity notes. If your weight changed over those 28 days, enter the change and the estimate is corrected using about 7,700 kcal per kg (3,500 per lb). Days you only logged part of, and workouts without calorie estimates, pull the estimate down, so check it against your weight over the next few weeks.
+
+Without enough log yet, a formula gives a starting point. The Mifflin-St Jeor resting burn is 10 × kg + 6.25 × cm − 5 × age, then + 5 for men or − 161 for women. Multiply it by about 1.2 for a desk job, or 1.3–1.4 if you're on your feet a lot, for daily life without workouts. Formulas are often 10% or more off for one person.
+
 #### For plugin developers
 
 Cal Track asks every enabled plugin that has `api.calTrackDay` on its plugin instance:
@@ -239,7 +247,7 @@ Nothing else leaves your device. Cal Track has no analytics, telemetry, ads or a
 - **Macro columns**: show Protein / Carbs / Fat in daily logs
 - **Daily calorie goal**: adds Goal and Remaining rows
 - **Guidance from other plugins**: shows other plugins' notes for a day, and uses maintenance calories on days they mark as not to diet (on by default; see [Guidance from other plugins](#guidance-from-other-plugins))
-- **Maintenance calories**: the goal on those days; 0 keeps the daily goal
+- **Maintenance calories (before exercise)**: the goal on those days; 0 keeps the daily goal. **Suggest** estimates it from your log (see [Maintenance calories](#maintenance-calories))
 - **Exercise**: shows calories burned from activity notes, and adds the active part back to Remaining (on by default; see [Exercise](#exercise))
 - **Meals**: the meal labels to choose from, comma-separated, in display order. Blank turns meals off.
 - **Clear recent foods**: forgets cached lookups (My foods is untouched)

@@ -44,6 +44,7 @@ import {
   updateEntry,
 } from './logcsv.js';
 import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from './lookup.js';
+import { estimateMaintenance, MIN_DAYS, WINDOW_DAYS } from './maintenance.js';
 import { formatNumber } from './table.js';
 import { normalizeUnit, toGrams, unitsFor } from './units.js';
 
@@ -343,20 +344,31 @@ class CalTrackSettingTab extends PluginSettingTab {
               ),
           },
           {
-            name: 'Maintenance calories',
+            name: 'Maintenance calories (before exercise)',
             desc:
-              'The calories that keep your weight steady: the goal on days another plugin marks as not to diet. ' +
-              'Leave at 0 to keep the daily goal and only show the notes.',
+              'What keeps your weight steady, not counting logged workouts: Remaining adds those back, as with the daily goal. ' +
+              'The goal on days another plugin marks as not to diet. Leave at 0 to keep the daily goal and only show the notes.',
             render: (setting) =>
-              setting.addText((t) => {
-                t.inputEl.type = 'number';
-                t.setValue(String(s.maintenanceGoal || 0)).onChange(async (v) => {
-                  const n = Number(v);
-                  s.maintenanceGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
-                  await save();
-                  this.plugin.logChanged();
-                });
-              }),
+              setting
+                .addText((t) => {
+                  t.inputEl.type = 'number';
+                  t.setValue(String(s.maintenanceGoal || 0)).onChange(async (v) => {
+                    const n = Number(v);
+                    s.maintenanceGoal = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+                    await save();
+                    this.plugin.logChanged();
+                  });
+                })
+                .addButton((b) =>
+                  b.setButtonText('Suggest').onClick(() =>
+                    new MaintenanceModal(this.plugin, async (kcal) => {
+                      s.maintenanceGoal = kcal;
+                      await save();
+                      this.plugin.logChanged();
+                      this.refresh();
+                    }).open(),
+                  ),
+                ),
           },
           {
             name: 'Exercise',
@@ -1005,6 +1017,110 @@ class CustomFoodModal extends Modal {
   }
 }
 
+// Suggests maintenance calories from the last few weeks of the log and
+// activity notes (see maintenance.js), with an optional weight change.
+class MaintenanceModal extends Modal {
+  /**
+   * @param {CalTrackPlugin} plugin
+   * @param {(kcal: number) => unknown} onUse
+   */
+  constructor(plugin, onUse) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.onUse = onUse;
+    this.weightChange = 0;
+    /** @type {'kg' | 'lb'} */
+    this.unit = 'kg';
+    /** @type {import('./maintenance.js').LoggedDay[]} */
+    this.days = [];
+  }
+
+  async onOpen() {
+    const { contentEl } = this;
+    this.titleEl.setText('Suggest maintenance calories');
+    contentEl.createEl('p', {
+      cls: 'setting-item-description',
+      text:
+        `From the last ${WINDOW_DAYS} days: what you ate a day on average, less the active calories of ` +
+        'logged workouts. Only days with food logged count.',
+    });
+    new Setting(contentEl)
+      .setName(`Weight change over the last ${WINDOW_DAYS} days`)
+      .setDesc('Negative for weight lost. Leave at 0 if your weight held steady.')
+      .addText((t) => {
+        t.inputEl.type = 'number';
+        t.inputEl.setAttr('step', 'any');
+        t.inputEl.setAttr('inputmode', 'decimal');
+        t.setValue('0').onChange((v) => {
+          const n = Number(v);
+          this.weightChange = Number.isFinite(n) ? n : 0;
+          this.show();
+        });
+      })
+      .addDropdown((d) =>
+        d
+          .addOptions({ kg: 'kg', lb: 'lb' })
+          .setValue(this.unit)
+          .onChange((v) => {
+            this.unit = v === 'lb' ? 'lb' : 'kg';
+            this.show();
+          }),
+      );
+    this.resultEl = contentEl.createDiv({ cls: 'cal-track-preview' });
+    contentEl.createEl('p', {
+      cls: 'setting-item-description',
+      text:
+        "Days you only logged part of, and workouts without calorie estimates, make this too low. It's a starting " +
+        'point: check it against your weight over the next few weeks.',
+    });
+    new Setting(contentEl).addButton((b) => {
+      this.useButton = b;
+      b.setButtonText('Use this')
+        .setCta()
+        .onClick(() => {
+          const e = this.estimate();
+          if (!e) return;
+          this.close();
+          this.onUse(e.maintenance);
+        });
+    });
+    this.resultEl.setText('Reading your log…');
+    this.days = await this.plugin.recentLoggedDays();
+    this.show();
+  }
+
+  estimate() {
+    return estimateMaintenance(this.days, { weightChange: this.weightChange, unit: this.unit });
+  }
+
+  show() {
+    if (!this.resultEl) return;
+    const e = this.estimate();
+    this.useButton?.setDisabled(!e);
+    this.resultEl.empty();
+    if (!e) {
+      this.resultEl.setText(
+        `${this.days.length} of the last ${WINDOW_DAYS} days have food logged; at least ${MIN_DAYS} are needed.`,
+      );
+      return;
+    }
+    const line = (/** @type {string} */ text) => this.resultEl?.createDiv({ text });
+    line(`${e.days} days logged`);
+    line(`Eaten: ${formatNumber(e.intake, 0)} kcal a day`);
+    line(`Active (workouts): ${formatNumber(e.active, 0)} kcal a day`);
+    if (e.adjust)
+      line(`Weight change: ${e.adjust > 0 ? '+' : ''}${formatNumber(e.adjust, 0)} kcal a day`);
+    this.resultEl.createDiv({
+      cls: 'cal-track-suggested',
+      text: `Suggested: ${formatNumber(e.maintenance, 0)} kcal`,
+    });
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 // Several foods saved as one My foods entry: your usual breakfast, or a recipe
 // that makes several servings. Logged as a single row (see combo.js).
 /** @typedef {{ food: Food, qty: number, unit: string, grams: number, nutrients: Nutrients }} FoundItem */
@@ -1556,13 +1672,35 @@ class CalTrackPlugin extends Plugin {
     return providers.length ? guidanceFor(providers, date) : null;
   }
 
-  // The day's exercise, from the properties of activity notes.
-  /** @param {string} date YYYY-MM-DD */
-  exerciseFor(date) {
-    const notes = this.app.vault.getMarkdownFiles().map((file) => ({
+  // Each note's path and properties, for finding activities.
+  noteProperties() {
+    return this.app.vault.getMarkdownFiles().map((file) => ({
       path: file.path,
       frontmatter: this.app.metadataCache.getFileCache(file)?.frontmatter,
     }));
+  }
+
+  // Days with food logged in the WINDOW_DAYS before today, with what was
+  // eaten and the active calories of logged workouts (for MaintenanceModal).
+  async recentLoggedDays() {
+    const log = await this.getLog();
+    const notes = this.noteProperties();
+    /** @type {import('./maintenance.js').LoggedDay[]} */
+    const days = [];
+    for (let i = 1; i <= WINDOW_DAYS; i++) {
+      const date = moment().subtract(i, 'days').format(DATE_KEY);
+      const kcal = totals(entriesFor(log, date)).kcal ?? 0;
+      if (kcal > 0) days.push({ kcal, active: this.exerciseFor(date, notes).active });
+    }
+    return days;
+  }
+
+  // The day's exercise, from the properties of activity notes.
+  /**
+   * @param {string} date YYYY-MM-DD
+   * @param {ReturnType<CalTrackPlugin['noteProperties']>} [notes]
+   */
+  exerciseFor(date, notes = this.noteProperties()) {
     const exercise = exerciseFor(notes, date, (startDate) => {
       if (startDate === null || startDate === undefined || startDate === '') return null;
       const m = moment(String(startDate), moment.ISO_8601, true);

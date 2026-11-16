@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Guidance from other plugins:** other plugins can add a note to a day and mark it as a day not to diet, through `api.calTrackDay(date)`. Set **Maintenance calories** and the goal switches to it on those days, shown as **Goal (maintain)**, never below your daily goal. A training plan can use this so you don't diet through heavy training. Turn **Guidance from other plugins** off in settings to ignore it. See the README for the API.
+- **Maintenance calories (before exercise):** **Suggest** estimates it from the last 28 days of your log: average intake less average active workout calories, corrected for any weight change you enter.
 
 ## 0.2.0
 
