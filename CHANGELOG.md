@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Guidance from other plugins:** other plugins can add a note to a day and mark it as a day not to diet, through `api.calTrackDay(date)`. Set **Maintenance calories** and the goal switches to it on those days, shown as **Goal (maintain)**, never below your daily goal. A training plan can use this so you don't diet through heavy training. Turn **Guidance from other plugins** off in settings to ignore it. See the README for the API.
+- **Maintenance calories (before exercise):** **Suggest** estimates it from the last 28 days of your log: average intake less average active workout calories, corrected for any weight change you enter.
+
 ## 0.2.0
 
 - **Exercise:** daily logs show the calories burned in that day's activities, from activity notes with `estimated_calories` and `active_calories` properties (as [Physical Activity Importer](https://github.com/BenRuns/physical-activity-importer) writes them), and a **Net** row: what you ate less the active calories. With a goal, Remaining adds back the active calories only, since the goal already covers resting burn. On by default; turn **Exercise** off in settings to hide it.
