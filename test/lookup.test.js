@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TTLCache } from '../src/cache.js';
-import { cachedSearch, RATE_LIMIT_COOLDOWN_MS } from '../src/lookup.js';
+import { cachedSearch, cacheKey, RATE_LIMIT_COOLDOWN_MS } from '../src/lookup.js';
 
 const usdaOk = {
   status: 200,
@@ -179,4 +179,15 @@ test('a non-rate-limit error is not cached — it is retried next time', async (
     now: 1,
   });
   assert.equal(b.foods.length, 1, 'retried instead of serving the cached failure');
+});
+
+test('pages and brands are cached separately', () => {
+  const settings = { useUsda: true, useOff: true, usdaApiKey: '' };
+  const base = cacheKey(settings, 'yogurt');
+  assert.notEqual(base, cacheKey(settings, 'yogurt', { page: 2 }));
+  assert.notEqual(base, cacheKey(settings, 'yogurt', { brand: 'Chobani' }));
+  assert.equal(
+    cacheKey(settings, 'Yogurt ', { brand: 'chobani' }),
+    cacheKey(settings, 'yogurt', { brand: 'Chobani ' }),
+  );
 });

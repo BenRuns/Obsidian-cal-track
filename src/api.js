@@ -132,34 +132,97 @@ async function getJson(request, url, headers, { notFoundOk = false, retryDelays 
   return res.json;
 }
 
+// A page of results, and whether the source has more after it.
+/** @typedef {{ foods: Food[], more: boolean }} SearchPage */
+
+const PAGE_SIZE = 15;
+
+// Words of a brand or query, lowercased, for matching against a food's brand.
+/** @param {string} s */
+const wordsOf = (s) =>
+  s
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}'&]+/u)
+    .filter((w) => w.length > 1);
+
+/**
+ * @param {Food} food
+ * @param {string[]} words
+ */
+const brandMatches = (food, words) => {
+  const brand = food.brand.toLowerCase();
+  return words.length > 0 && words.some((w) => brand.includes(w));
+};
+
+// USDA's field syntax: each brand word must be in the brand name.
+// "Trader Joe's" → +brandName:trader +brandName:joe's
+/** @param {string} brand */
+function usdaBrandQuery(brand) {
+  return wordsOf(brand)
+    .map((w) => `+brandName:${w.replace(/[^\p{L}\p{N}']/gu, '')}`)
+    .filter((w) => w !== '+brandName:')
+    .join(' ');
+}
+
 // USDA ranks by relevance across all data types; generic foods (Foundation /
 // SR Legacy / Survey) are moved ahead of branded ones so "banana" lists the
-// fruit before banana-flavoured candy. Relevance order is kept within each.
+// fruit before banana-flavoured candy — unless the query names the brand
+// ("chobani yogurt"), when those branded foods come first. Relevance order is
+// kept within each group. With a brand, only Branded foods are searched.
 /**
  * @param {HttpRequest} request
  * @param {string} query
  * @param {string} apiKey
- * @param {{ branded?: boolean, pageSize?: number, retryDelays?: number[] }} [options]
+ * @param {{ branded?: boolean, pageSize?: number, page?: number, brand?: string, retryDelays?: number[] }} [options]
+ * @returns {Promise<SearchPage>}
  */
-async function searchUsda(
+async function searchUsdaPage(
   request,
   query,
   apiKey,
-  { branded = true, pageSize = 15, retryDelays = USDA_RETRY_DELAYS_MS } = {},
+  {
+    branded = true,
+    pageSize = PAGE_SIZE,
+    page = 1,
+    brand = '',
+    retryDelays = USDA_RETRY_DELAYS_MS,
+  } = {},
 ) {
-  const types = ['Foundation', 'SR Legacy', 'Survey (FNDDS)'];
-  if (branded) types.push('Branded');
+  const brandQuery = usdaBrandQuery(brand);
+  const types = brandQuery ? ['Branded'] : ['Foundation', 'SR Legacy', 'Survey (FNDDS)'];
+  if (branded && !brandQuery) types.push('Branded');
   // A POST with a JSON body: USDA's server rejects a GET whose query string
   // has the encoded parentheses of "Survey (FNDDS)" (HTTP 400).
   const params = new URLSearchParams({ api_key: apiKey || 'DEMO_KEY' });
+  /** @type {Record<string, unknown>} */
+  const body = {
+    query: [brandQuery, query.trim()].filter(Boolean).join(' '),
+    pageSize,
+    dataType: types,
+  };
+  if (page > 1) body.pageNumber = page;
   const json = /** @type {UsdaSearchJson} */ (
     await getJson(request, `${USDA_BASE}/foods/search?${params}`, undefined, {
       retryDelays,
-      body: { query, pageSize, dataType: types },
+      body,
     })
   );
   const foods = parseUsdaSearch(json);
-  return [...foods.filter((f) => !f.brand), ...foods.filter((f) => f.brand)];
+  const words = wordsOf(query);
+  /** @param {Food} f */
+  const first = (f) => !f.brand || brandMatches(f, words);
+  const more = Number(json?.totalPages) > (Number(json?.currentPage) || page);
+  return { foods: [...foods.filter(first), ...foods.filter((f) => !first(f))], more };
+}
+
+/**
+ * @param {HttpRequest} request
+ * @param {string} query
+ * @param {string} apiKey
+ * @param {Parameters<typeof searchUsdaPage>[3]} [options]
+ */
+async function searchUsda(request, query, apiKey, options) {
+  return (await searchUsdaPage(request, query, apiKey, options)).foods;
 }
 
 // Full record — has foodPortions, which search results sometimes lack.
@@ -179,38 +242,59 @@ async function getUsdaFood(request, fdcId, apiKey, { retryDelays = USDA_RETRY_DE
 
 // Search-a-licious first; the classic search only if it fails for a reason
 // other than rate limiting (being rate limited, a second request won't help).
+// A brand is a brands:"…" filter there; the classic search has no filter for
+// it, so the brand joins the search terms.
 /**
  * @param {HttpRequest} request
  * @param {string} query
- * @param {{ pageSize?: number }} [options]
+ * @param {{ pageSize?: number, page?: number, brand?: string }} [options]
+ * @returns {Promise<SearchPage>}
  */
-async function searchOff(request, query, { pageSize = 15 } = {}) {
+async function searchOffPage(request, query, { pageSize = PAGE_SIZE, page = 1, brand = '' } = {}) {
   const headers = { 'User-Agent': USER_AGENT };
+  const b = brand.trim().replace(/"/g, '');
   try {
     const params = new URLSearchParams({
-      q: query,
+      q: [query.trim(), b && `brands:"${b}"`].filter(Boolean).join(' '),
       page_size: String(pageSize),
       fields: OFF_FIELDS,
     });
-    const json = /** @type {{ hits?: OffProductJson[] } | null} */ (
+    if (page > 1) params.set('page', String(page));
+    const json = /** @type {{ hits?: OffProductJson[], page_count?: number } | null} */ (
       await getJson(request, `${OFF_SEARCH}/search?${params}`, headers)
     );
-    return parseOffSearch({ products: json?.hits });
+    return {
+      foods: parseOffSearch({ products: json?.hits }),
+      more: Number(json?.page_count) > page,
+    };
   } catch (e) {
     if (errorCode(e) === 'rate_limited') throw e;
   }
   const params = new URLSearchParams({
-    search_terms: query,
+    search_terms: [query.trim(), b].filter(Boolean).join(' '),
     search_simple: '1',
     action: 'process',
     json: '1',
     page_size: String(pageSize),
     fields: OFF_FIELDS,
   });
-  const json = /** @type {import('./types').OffSearchJson} */ (
+  if (page > 1) params.set('page', String(page));
+  const json = /** @type {import('./types').OffSearchJson | null} */ (
     await getJson(request, `${OFF_BASE}/cgi/search.pl?${params}`, headers)
   );
-  return parseOffSearch(json);
+  return {
+    foods: parseOffSearch(json || {}),
+    more: Number(json?.count) > page * pageSize,
+  };
+}
+
+/**
+ * @param {HttpRequest} request
+ * @param {string} query
+ * @param {Parameters<typeof searchOffPage>[2]} [options]
+ */
+async function searchOff(request, query, options) {
+  return (await searchOffPage(request, query, options)).foods;
 }
 
 // ─── Barcodes ─────────────────────────────────────────────────────────────────
@@ -286,28 +370,34 @@ async function lookupUsdaBarcode(
 }
 
 // Runs the enabled sources in parallel. One failing source doesn't hide the
-// other's results; errors are returned alongside.
+// other's results; errors are returned alongside. `more` lists the sources
+// with another page, for a "More results" button (page + 1).
 // A query that is just a barcode is looked up by barcode instead of as text.
 /**
  * @param {HttpRequest} request
  * @param {string} query
  * @param {SearchSettings} settings
+ * @param {{ page?: number, brand?: string }} [options]
  * @returns {Promise<SearchResult>}
  */
-async function searchAll(request, query, settings) {
-  const code = asBarcode(query);
-  /** @type {[string, Promise<Food[]>][]} */
+async function searchAll(request, query, settings, { page = 1, brand = '' } = {}) {
+  const code = brand.trim() ? null : asBarcode(query);
+  /** @param {Promise<Food[]>} p */
+  const single = async (p) => ({ foods: await p, more: false });
+  /** @type {[string, Promise<SearchPage>][]} */
   const jobs = [];
   if (settings.useUsda) {
     const job = code
-      ? lookupUsdaBarcode(request, code, settings.usdaApiKey)
-      : searchUsda(request, query, settings.usdaApiKey);
+      ? single(lookupUsdaBarcode(request, code, settings.usdaApiKey))
+      : searchUsdaPage(request, query, settings.usdaApiKey, { page, brand });
     jobs.push(['USDA', job]);
   }
   if (settings.useOff) {
     jobs.push([
       'Open Food Facts',
-      code ? lookupOffBarcode(request, code) : searchOff(request, query),
+      code
+        ? single(lookupOffBarcode(request, code))
+        : searchOffPage(request, query, { page, brand }),
     ]);
   }
   const settled = await Promise.allSettled(jobs.map(([, p]) => p));
@@ -317,16 +407,20 @@ async function searchAll(request, query, settings) {
   const errors = [];
   /** @type {string[]} */
   const rateLimited = [];
+  /** @type {string[]} */
+  const more = [];
   settled.forEach((r, i) => {
-    if (r.status === 'fulfilled') foods.push(...r.value);
-    else {
+    if (r.status === 'fulfilled') {
+      foods.push(...r.value.foods);
+      if (r.value.more) more.push(jobs[i][0]);
+    } else {
       /** @type {unknown} */
       const reason = r.reason;
       errors.push(`${jobs[i][0]}: ${errorMessage(reason)}`);
       if (errorCode(reason) === 'rate_limited') rateLimited.push(jobs[i][0]);
     }
   });
-  return { foods, errors, barcode: code, rateLimited };
+  return { foods, errors, barcode: code, rateLimited, more };
 }
 
 export {
@@ -340,6 +434,9 @@ export {
   sameBarcode,
   searchAll,
   searchOff,
+  searchOffPage,
   searchUsda,
+  searchUsdaPage,
   USER_AGENT,
+  usdaBrandQuery,
 };
