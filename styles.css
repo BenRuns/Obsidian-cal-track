@@ -294,6 +294,8 @@
    part above it and scrolls inside. */
 .cal-track-modal-container {
   box-sizing: border-box;
+  /* Below the status bar and notch, so the close button stays reachable. */
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   padding-bottom: var(--cal-track-keyboard, 0px);
 }
 
@@ -303,15 +305,9 @@
 }
 
 /* While typing: room below the content so the focused field can scroll to
-   the top of the modal, above the keyboard. scroll-margin keeps the field's
-   label (the row above it) in view. */
+   the top of the modal, above the keyboard. */
 .cal-track-modal-container .modal.cal-track-typing .modal-content {
   padding-bottom: 60vh;
-}
-
-.cal-track-modal-container input,
-.cal-track-modal-container textarea {
-  scroll-margin-top: 4em;
 }
 
 /* One scrolling area, not a list scrolling inside a scrolling modal. */
