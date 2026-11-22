@@ -13,6 +13,15 @@
   min-width: 0;
 }
 
+.cal-track-search-row input.cal-track-brand {
+  flex-basis: 10em;
+}
+
+.cal-track-more {
+  display: block;
+  margin: 8px auto 4px;
+}
+
 .cal-track-status {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
@@ -287,4 +296,25 @@
 .cal-track-add-icon svg {
   width: var(--icon-s);
   height: var(--icon-s);
+}
+
+/* ─── Mobile keyboard ─────────────────────────────────────────── */
+
+/* --cal-track-keyboard is how much of the screen the on-screen keyboard
+   covers (set from main.js on phones and tablets). The modal stays in the
+   part above it and scrolls inside. */
+.cal-track-modal-container {
+  box-sizing: border-box;
+  padding-bottom: var(--cal-track-keyboard, 0px);
+}
+
+.cal-track-modal-container .modal {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+/* One scrolling area, not a list scrolling inside a scrolling modal. */
+.cal-track-modal-container .cal-track-results {
+  max-height: none;
+  overflow-y: visible;
 }

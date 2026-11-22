@@ -31,10 +31,13 @@ const RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
 /**
  * @param {SearchSettings} settings
  * @param {string} query
+ * @param {{ page?: number, brand?: string }} [options]
  */
-function cacheKey(settings, query) {
+function cacheKey(settings, query, { page = 1, brand = '' } = {}) {
   return [
     query.trim().toLowerCase(),
+    brand.trim().toLowerCase(),
+    page,
     settings.useUsda ? `usda:${settings.usdaApiKey || 'demo'}` : '',
     settings.useOff ? 'off' : '',
   ].join('|');
@@ -57,12 +60,22 @@ function cooldownMessage(source, cooldowns, now) {
   return `${source}: rate limited, retrying in ${mins} min.${hint}`;
 }
 
+// page and brand: see searchAll.
 /**
- * @param {{ request: HttpRequest, cache: import('./cache.js').TTLCache<SearchResult>, cooldowns: Cooldowns, settings: SearchSettings, query: string, now?: number }} options
+ * @param {{ request: HttpRequest, cache: import('./cache.js').TTLCache<SearchResult>, cooldowns: Cooldowns, settings: SearchSettings, query: string, page?: number, brand?: string, now?: number }} options
  * @returns {Promise<SearchResult>}
  */
-async function cachedSearch({ request, cache, cooldowns, settings, query, now = Date.now() }) {
-  const key = cacheKey(settings, query);
+async function cachedSearch({
+  request,
+  cache,
+  cooldowns,
+  settings,
+  query,
+  page = 1,
+  brand = '',
+  now = Date.now(),
+}) {
+  const key = cacheKey(settings, query, { page, brand });
   const hit = cache.get(key, now);
   if (hit) return hit;
 
@@ -78,10 +91,16 @@ async function cachedSearch({ request, cache, cooldowns, settings, query, now = 
   ).map((s) => cooldownMessage(s, cooldowns, now));
 
   if (!effective.useUsda && !effective.useOff) {
-    return { foods: [], errors: waiting, barcode: asBarcode(query), rateLimited: [] };
+    return {
+      foods: [],
+      errors: waiting,
+      barcode: brand.trim() ? null : asBarcode(query),
+      rateLimited: [],
+      more: [],
+    };
   }
 
-  const result = await searchAll(request, query, effective);
+  const result = await searchAll(request, query, effective, { page, brand });
   for (const source of result.rateLimited) cooldowns[source] = now + RATE_LIMIT_COOLDOWN_MS;
   const merged = { ...result, errors: [...waiting, ...result.errors] };
 

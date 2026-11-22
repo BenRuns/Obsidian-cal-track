@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import manifest from '../manifest.json' with { type: 'json' };
-import { searchAll, searchUsda, USER_AGENT } from '../src/api.js';
+import {
+  searchAll,
+  searchOffPage,
+  searchUsda,
+  searchUsdaPage,
+  USER_AGENT,
+  usdaBrandQuery,
+} from '../src/api.js';
 
 const { version } = manifest;
 
@@ -285,4 +292,93 @@ test('USDA full-record fetch retries too', async () => {
   const full = await getUsdaFood(request, '9', '', noWait);
   assert.equal(calls.length, 2);
   assert.equal(full.name, 'Egg');
+});
+
+test('USDA brand search queries the brand name field, Branded foods only', async () => {
+  const { request, requests } = stub({ 'https://api.nal.usda.gov': usdaOk });
+  await searchUsda(request, 'granola', '', { brand: "Trader Joe's" });
+  const body = JSON.parse(requests[0].body);
+  assert.equal(body.query, "+brandName:trader +brandName:joe's granola");
+  assert.deepEqual(body.dataType, ['Branded']);
+  assert.equal(usdaBrandQuery(''), '');
+});
+
+test('USDA paging sends pageNumber and reports more pages', async () => {
+  const { request, requests } = stub({
+    'https://api.nal.usda.gov': {
+      status: 200,
+      json: { ...usdaOk.json, currentPage: 2, totalPages: 3 },
+    },
+  });
+  const { more } = await searchUsdaPage(request, 'egg', '', { page: 2 });
+  assert.equal(JSON.parse(requests[0].body).pageNumber, 2);
+  assert.equal(more, true);
+  const last = stub({
+    'https://api.nal.usda.gov': {
+      status: 200,
+      json: { ...usdaOk.json, currentPage: 3, totalPages: 3 },
+    },
+  });
+  assert.equal((await searchUsdaPage(last.request, 'egg', '', { page: 3 })).more, false);
+});
+
+test('a brand named in the query keeps its foods ahead of generic ones', async () => {
+  const food = (fdcId, description, brandName) => ({
+    fdcId,
+    description,
+    brandName,
+    foodNutrients: [{ nutrientId: 1008, value: 100 }],
+  });
+  const { request } = stub({
+    'https://api.nal.usda.gov': {
+      status: 200,
+      json: {
+        foods: [
+          food(1, 'Greek yogurt', 'CHOBANI'),
+          food(2, 'Yogurt, Greek, plain'),
+          food(3, 'Greek yogurt', 'FAGE'),
+        ],
+      },
+    },
+  });
+  const foods = await searchUsda(request, 'chobani greek yogurt', '');
+  assert.deepEqual(
+    foods.map((f) => f.id),
+    ['usda:1', 'usda:2', 'usda:3'],
+  );
+  const plain = await searchUsda(request, 'greek yogurt', '');
+  assert.deepEqual(
+    plain.map((f) => f.id),
+    ['usda:2', 'usda:1', 'usda:3'],
+  );
+});
+
+test('Open Food Facts brand search uses a brands filter and pages', async () => {
+  const { request, calls } = stub({
+    'https://search.openfoodfacts.org': { status: 200, json: { hits: [], page_count: 4 } },
+  });
+  const { more } = await searchOffPage(request, 'ice cream', { brand: "Ben & Jerry's", page: 2 });
+  const url = new URL(calls[0]);
+  assert.equal(url.searchParams.get('q'), 'ice cream brands:"Ben & Jerry\'s"');
+  assert.equal(url.searchParams.get('page'), '2');
+  assert.equal(more, true);
+});
+
+test('searchAll lists sources with more pages and skips barcode lookup with a brand', async () => {
+  const { request, calls } = stub({
+    'https://api.nal.usda.gov': {
+      status: 200,
+      json: { ...usdaOk.json, currentPage: 1, totalPages: 2 },
+    },
+    'https://search.openfoodfacts.org': { status: 200, json: { hits: [], page_count: 1 } },
+  });
+  const { more, barcode } = await searchAll(
+    request,
+    '12345678',
+    { useUsda: true, useOff: true },
+    { brand: 'Acme' },
+  );
+  assert.deepEqual(more, ['USDA']);
+  assert.equal(barcode, null);
+  assert.ok(calls.some((c) => c.startsWith('https://search.openfoodfacts.org/search')));
 });

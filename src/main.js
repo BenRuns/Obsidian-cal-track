@@ -4,6 +4,7 @@ import {
   moment,
   Notice,
   normalizePath,
+  Platform,
   Plugin,
   PluginSettingTab,
   requestUrl,
@@ -501,10 +502,70 @@ function summarize(n, grams) {
     : `${parts.join(' · ')}  (≈ ${formatNumber(grams, 0)} g)`;
 }
 
+// ─── Mobile keyboard ──────────────────────────────────────────────────────────
+//
+// On phones the on-screen keyboard can cover the bottom of the screen without
+// the page getting any shorter (iOS), hiding the field being typed in. While a
+// modal is open, the visual viewport tells how much is covered: the modal is
+// kept above that, and the focused field is scrolled into view once the
+// keyboard is up.
+
+/**
+ * @param {Modal} modal
+ * @returns {() => void} undo
+ */
+function fitAboveKeyboard(modal) {
+  if (!Platform.isMobile) return () => {};
+  const { containerEl, modalEl } = modal;
+  containerEl.addClass('cal-track-modal-container');
+  const vv = window.visualViewport;
+  const fit = () => {
+    const covered = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    containerEl.setCssProps({ '--cal-track-keyboard': `${Math.round(covered)}px` });
+  };
+  /** @type {number | undefined} */
+  let timer;
+  /** @param {FocusEvent} e */
+  const onFocus = (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLElement) || !el.matches('input, textarea, select')) return;
+    // Wait for the keyboard to finish opening, and the modal to resize.
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      fit();
+      el.scrollIntoView({ block: 'nearest' });
+    }, 350);
+  };
+  vv?.addEventListener('resize', fit);
+  vv?.addEventListener('scroll', fit);
+  modalEl.addEventListener('focusin', onFocus);
+  fit();
+  return () => {
+    window.clearTimeout(timer);
+    vv?.removeEventListener('resize', fit);
+    vv?.removeEventListener('scroll', fit);
+    modalEl.removeEventListener('focusin', onFocus);
+  };
+}
+
+// The base for this plugin's modals.
+class CalTrackModal extends Modal {
+  open() {
+    super.open();
+    this.unfit = fitAboveKeyboard(this);
+  }
+
+  close() {
+    this.unfit?.();
+    this.unfit = undefined;
+    super.close();
+  }
+}
+
 /** @type {Record<string, string>} */
 const SOURCE_LABELS = { usda: 'USDA', off: 'OFF', custom: 'Mine', local: 'Mine' };
 
-class FoodSearchModal extends Modal {
+class FoodSearchModal extends CalTrackModal {
   /**
    * @param {CalTrackPlugin} plugin
    * @param {{ query?: string, onChoose: (food: Food) => unknown, allowCombo?: boolean }} options
@@ -520,6 +581,14 @@ class FoodSearchModal extends Modal {
     this.timer = undefined;
     /** @type {Food[]} */
     this.mine = [];
+    // Online results shown so far, and the paging state for "More results".
+    /** @type {Food[]} */
+    this.results = [];
+    /** @type {string | null} */
+    this.resultsBarcode = null;
+    this.page = 1;
+    /** @type {string[]} */
+    this.more = [];
   }
 
   onOpen() {
@@ -535,6 +604,20 @@ class FoodSearchModal extends Modal {
     });
     this.input.addEventListener('input', () => this.onType());
     this.input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.search();
+      }
+    });
+    // Narrows the search to one brand or company; with no food name, it
+    // lists that brand's products.
+    this.brandInput = row.createEl('input', {
+      type: 'search',
+      cls: 'cal-track-brand',
+      placeholder: 'Brand or company (optional)',
+    });
+    this.brandInput.addEventListener('input', () => this.onType());
+    this.brandInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         this.search();
@@ -578,20 +661,24 @@ class FoodSearchModal extends Modal {
   onType() {
     window.clearTimeout(this.timer);
     this.searchSeq++; // results for the old text no longer apply
+    this.results = [];
+    this.more = [];
     this.renderLocal();
     const q = this.input.value.trim();
+    const brand = this.brandInput.value.trim();
     const { useUsda, useOff } = this.plugin.settings;
     // A complete UPC-A / EAN-13 is a single product lookup, not a search, so
     // it runs as soon as the number is in.
-    if (/^\d{12,13}$/.test(q.replace(/[\s-]/g, ''))) {
+    if (!brand && /^\d{12,13}$/.test(q.replace(/[\s-]/g, ''))) {
       this.timer = window.setTimeout(() => this.search(), 300);
       return;
     }
     let hint = '';
-    if (q.length >= 2 && (useUsda || useOff))
-      hint = asBarcode(q)
-        ? 'Press Enter to look up this barcode.'
-        : 'Press Enter to search online.';
+    if ((q.length >= 2 || brand.length >= 2) && (useUsda || useOff))
+      hint =
+        !brand && asBarcode(q)
+          ? 'Press Enter to look up this barcode.'
+          : 'Press Enter to search online.';
     this.status.setText(hint);
   }
 
@@ -600,9 +687,12 @@ class FoodSearchModal extends Modal {
   renderLocal() {
     this.list.empty();
     const q = this.input.value.trim().toLowerCase();
+    const brand = this.brandInput.value.trim().toLowerCase();
     const words = q.split(/\s+/).filter(Boolean);
     /** @param {Food} f */
-    const match = (f) => words.every((w) => displayName(f).toLowerCase().includes(w));
+    const match = (f) =>
+      words.every((w) => displayName(f).toLowerCase().includes(w)) &&
+      (!brand || f.brand.toLowerCase().includes(brand));
     const mine = this.mine.filter(match);
     const mineKeys = new Set(this.mine.map((f) => displayName(f).toLowerCase()));
     const recent = this.plugin
@@ -617,12 +707,16 @@ class FoodSearchModal extends Modal {
       this.list.createDiv({ cls: 'cal-track-section', text: 'Recent' });
       for (const f of recent) this.renderItem(f);
     }
+    this.renderResults();
   }
 
-  async search() {
+  // A new search starts at page 1; "More results" adds the next page from
+  // the sources that have one.
+  async search(nextPage = false) {
     window.clearTimeout(this.timer);
     const q = this.input.value.trim();
-    if (q.length < 2) {
+    const brand = this.brandInput.value.trim();
+    if (q.length < 2 && brand.length < 2) {
       this.status.setText('');
       return;
     }
@@ -631,23 +725,46 @@ class FoodSearchModal extends Modal {
       this.status.setText('Both online databases are off in settings — only your foods are shown.');
       return;
     }
+    const page = nextPage ? this.page + 1 : 1;
+    const sources = nextPage ? this.more : undefined;
     const seq = ++this.searchSeq;
-    this.status.setText(asBarcode(q) ? 'Looking up barcode…' : 'Searching…');
-    const { foods, errors, barcode } = await this.plugin.lookupFoods(q);
+    if (nextPage) this.moreBtn?.setText('Loading…');
+    else this.status.setText(!brand && asBarcode(q) ? 'Looking up barcode…' : 'Searching…');
+    const { foods, errors, barcode, more } = await this.plugin.lookupFoods(q, {
+      page,
+      brand,
+      sources,
+    });
     if (seq !== this.searchSeq) return; // superseded by newer typing / search, or closed
+    this.page = page;
+    this.more = more;
+    const seen = new Set(nextPage ? this.results.map((f) => f.id) : []);
+    this.results = [...(nextPage ? this.results : []), ...foods.filter((f) => !seen.has(f.id))];
+    this.resultsBarcode = barcode;
+    const top = this.list.scrollTop;
     this.renderLocal();
+    if (nextPage) this.list.scrollTop = top;
     if (barcode && !foods.length) {
       this.status.setText('');
       this.renderBarcodeMiss(barcode, errors);
       return;
     }
-    this.status.setText(errors.length ? errors.join(' · ') : foods.length ? '' : 'No matches.');
-    if (foods.length) {
-      this.list.createDiv({
-        cls: 'cal-track-section',
-        text: barcode ? `Barcode ${barcode}` : 'Search results',
-      });
-      for (const f of foods) this.renderItem(f);
+    const none = this.results.length ? '' : 'No matches.';
+    this.status.setText(errors.length ? errors.join(' · ') : none);
+  }
+
+  renderResults() {
+    this.moreBtn = undefined;
+    if (!this.results.length) return;
+    this.list.createDiv({
+      cls: 'cal-track-section',
+      text: this.resultsBarcode ? `Barcode ${this.resultsBarcode}` : 'Search results',
+    });
+    for (const f of this.results) this.renderItem(f);
+    if (this.more.length) {
+      const btn = this.list.createEl('button', { cls: 'cal-track-more', text: 'More results' });
+      btn.addEventListener('click', () => this.search(true));
+      this.moreBtn = btn;
     }
   }
 
@@ -726,7 +843,7 @@ class FoodSearchModal extends Modal {
   }
 }
 
-class PortionModal extends Modal {
+class PortionModal extends CalTrackModal {
   /**
    * @param {CalTrackPlugin} plugin
    * @param {Food} food
@@ -936,7 +1053,7 @@ class PortionModal extends Modal {
 
 /** @typedef {'name' | 'servingAmount' | 'servingUnit' | 'servingGrams' | Macro} LabelField */
 
-class CustomFoodModal extends Modal {
+class CustomFoodModal extends CalTrackModal {
   /**
    * @param {CalTrackPlugin} plugin
    * @param {{ name?: string, onSave: (food: Food) => unknown }} options
@@ -1019,7 +1136,7 @@ class CustomFoodModal extends Modal {
 
 // Suggests maintenance calories from the last few weeks of the log and
 // activity notes (see maintenance.js), with an optional weight change.
-class MaintenanceModal extends Modal {
+class MaintenanceModal extends CalTrackModal {
   /**
    * @param {CalTrackPlugin} plugin
    * @param {(kcal: number) => unknown} onUse
@@ -1132,7 +1249,7 @@ class MaintenanceModal extends Modal {
  */
 const isFound = (it) => !('missing' in it);
 
-class ComboModal extends Modal {
+class ComboModal extends CalTrackModal {
   /**
    * @param {CalTrackPlugin} plugin
    * @param {{ combo?: Food | null, onSave?: (food: Food) => unknown }} options
@@ -1743,14 +1860,25 @@ class CalTrackPlugin extends Plugin {
     return this.settings.usdaApiKey || '';
   }
 
-  /** @param {string} query */
-  async lookupFoods(query) {
+  // sources: only these ('USDA', 'Open Food Facts'), for a next page.
+  /**
+   * @param {string} query
+   * @param {{ page?: number, brand?: string, sources?: string[] }} [options]
+   */
+  async lookupFoods(query, { page = 1, brand = '', sources } = {}) {
+    const settings = { ...this.settings, usdaApiKey: this.usdaKey() };
+    if (sources) {
+      settings.useUsda &&= sources.includes('USDA');
+      settings.useOff &&= sources.includes('Open Food Facts');
+    }
     return cachedSearch({
       request: requestUrl,
       cache: this.searchCache,
       cooldowns: this.rateLimitCooldowns,
-      settings: { ...this.settings, usdaApiKey: this.usdaKey() },
+      settings,
       query,
+      page,
+      brand,
     });
   }
 
