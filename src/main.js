@@ -462,6 +462,10 @@ function summarize(n, grams) {
 // of the modal, above where the keyboard sits. Where the visual viewport does
 // report the keyboard (--cal-track-keyboard), the modal also stays above it.
 
+/** @param {HTMLElement} el */
+const scrolls = (el) =>
+  el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY);
+
 const TYPING_FIELDS = 'input:not([type="checkbox"]):not([type="radio"]), textarea';
 
 /**
@@ -488,8 +492,20 @@ function fitAboveKeyboard(modal) {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       fit();
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      scrollToTop(el);
     }, 300);
+  };
+  // Scrolls only the modal's own scrolling area. scrollIntoView would also
+  // scroll Obsidian's page behind it, pushing the whole modal (and its close
+  // button) up under the status bar.
+  /** @param {HTMLElement} el */
+  const scrollToTop = (el) => {
+    let box = el.parentElement;
+    while (box && box !== modalEl && !scrolls(box)) box = box.parentElement;
+    const area = box && modalEl.contains(box) ? box : modalEl;
+    // Room for the label above the field.
+    const offset = el.getBoundingClientRect().top - area.getBoundingClientRect().top - 48;
+    if (offset > 0) area.scrollTo({ top: area.scrollTop + offset, behavior: 'smooth' });
   };
   // Focus moving from one field to the next fires focusout then focusin, so
   // wait a moment before deciding the keyboard is gone.
