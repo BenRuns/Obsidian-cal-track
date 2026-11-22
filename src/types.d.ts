@@ -79,6 +79,8 @@ export interface SearchResult {
   errors: string[];
   barcode: string | null;
   rateLimited: string[];
+  /** Sources with another page of results. */
+  more: string[];
 }
 
 /** Obsidian's requestUrl, or a test stub. */
@@ -150,6 +152,8 @@ export interface UsdaFoodJson {
 
 export interface UsdaSearchJson {
   foods?: UsdaFoodJson[];
+  currentPage?: number;
+  totalPages?: number;
 }
 
 export interface OffProductJson {
@@ -163,4 +167,5 @@ export interface OffProductJson {
 
 export interface OffSearchJson {
   products?: OffProductJson[];
+  count?: number;
 }
