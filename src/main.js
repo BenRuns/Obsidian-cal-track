@@ -504,11 +504,14 @@ function summarize(n, grams) {
 
 // ─── Mobile keyboard ──────────────────────────────────────────────────────────
 //
-// On phones the on-screen keyboard can cover the bottom of the screen without
-// the page getting any shorter (iOS), hiding the field being typed in. While a
-// modal is open, the visual viewport tells how much is covered: the modal is
-// kept above that, and the focused field is scrolled into view once the
-// keyboard is up.
+// On phones the on-screen keyboard covers the bottom of the screen, often
+// without the page getting shorter or the visual viewport saying so (Obsidian
+// on iOS), so fields low in a modal end up under it. While a field has focus,
+// the modal gets room below its content and the field is scrolled to the top
+// of the modal, above where the keyboard sits. Where the visual viewport does
+// report the keyboard (--cal-track-keyboard), the modal also stays above it.
+
+const TYPING_FIELDS = 'input:not([type="checkbox"]):not([type="radio"]), textarea';
 
 /**
  * @param {Modal} modal
@@ -528,23 +531,41 @@ function fitAboveKeyboard(modal) {
   /** @param {FocusEvent} e */
   const onFocus = (e) => {
     const el = e.target;
-    if (!(el instanceof HTMLElement) || !el.matches('input, textarea, select')) return;
-    // Wait for the keyboard to finish opening, and the modal to resize.
+    if (!(el instanceof HTMLElement) || !el.matches(TYPING_FIELDS)) return;
+    modalEl.addClass('cal-track-typing');
+    // Once the keyboard is up (it animates in), bring the field to the top.
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       fit();
-      el.scrollIntoView({ block: 'nearest' });
-    }, 350);
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 300);
+  };
+  // Focus moving from one field to the next fires focusout then focusin, so
+  // wait a moment before deciding the keyboard is gone.
+  const onBlur = () => {
+    window.setTimeout(() => {
+      const active = activeDocument.activeElement;
+      if (
+        !(
+          active instanceof HTMLElement &&
+          modalEl.contains(active) &&
+          active.matches(TYPING_FIELDS)
+        )
+      )
+        modalEl.removeClass('cal-track-typing');
+    }, 50);
   };
   vv?.addEventListener('resize', fit);
   vv?.addEventListener('scroll', fit);
   modalEl.addEventListener('focusin', onFocus);
+  modalEl.addEventListener('focusout', onBlur);
   fit();
   return () => {
     window.clearTimeout(timer);
     vv?.removeEventListener('resize', fit);
     vv?.removeEventListener('scroll', fit);
     modalEl.removeEventListener('focusin', onFocus);
+    modalEl.removeEventListener('focusout', onBlur);
   };
 }
 
