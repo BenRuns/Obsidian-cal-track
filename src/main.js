@@ -1665,6 +1665,17 @@ class CalTrackPlugin extends Plugin {
     await this.saveData({ settings: this.settings, foods: this.foods, recent: this.recent });
   }
 
+  // Obsidian (1.5.7+) calls this when data.json changes on disk, e.g. synced
+  // from another device. Reload it so this device shows the synced recent
+  // foods and settings, and so its next save doesn't write back a stale copy.
+  // The settings may point at a different My foods or log file, so drop those
+  // and redraw the open daily logs.
+  async onExternalSettingsChange() {
+    await this.loadAll();
+    this.myFoods = null;
+    this.logChanged();
+  }
+
   // ── Food lookups (cached, rate-limit aware — see lookup.js) ──
 
   hasKeychain() {
